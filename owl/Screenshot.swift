@@ -18,11 +18,11 @@ final class Screenshot {
 
     /// Take one of the front window of `pid`, or the display under the mouse
     /// when no window can be found. Returns the file name written, or nil when
-    /// nothing changed enough to keep.
+    /// nothing changed enough to keep; `force` keeps it however little changed.
     func take(pid: pid_t, to dir: URL, name: String, force: Bool = false) async -> String? {
         guard Self.hasPermission else { return nil }
         let now = ProcessInfo.processInfo.systemUptime
-        if !force, now - lastAt < minGap { return nil }
+        if now - lastAt < minGap { return nil }
         guard let content = await shareable() else { return nil }
         let filter: SCContentFilter
         let size: CGSize
@@ -42,7 +42,7 @@ final class Screenshot {
             size = CGSize(width: display.width, height: display.height)
         }
         let cfg = SCStreamConfiguration()
-        let scale = min(1.0, (2_000_000 / (size.width * size.height)).squareRoot())
+        let scale = min(1.0, (1_500_000 / (size.width * size.height)).squareRoot())
         let px = (NSScreen.main?.backingScaleFactor ?? 2)
         cfg.width = Int(size.width * px * scale)
         cfg.height = Int(size.height * px * scale)
@@ -61,7 +61,7 @@ final class Screenshot {
         lastHash = hash
         lastAt = now
         let rep = NSBitmapImageRep(cgImage: image)
-        guard let data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.72]) else { return nil }
+        guard let data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.65]) else { return nil }
         let file = "\(name).jpg"
         do {
             try data.write(to: dir.appending(path: file))

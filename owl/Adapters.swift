@@ -41,14 +41,50 @@ enum Adapters {
             for (k, v) in AX.describe(focused, valueLimit: 300) { f[k] = "\(v)" }
             r.focus = f
         }
-        if let a = adapter(for: r.bundle) { r.extra = a(front) }
+        if let a = adapter(for: front) { r.extra = a(front) }
         return r
     }
 
-    private static func adapter(for bundle: String) -> ((NSRunningApplication) -> [String: Any])? {
-        if bundle == "com.apple.finder" { return finder }
-        if browsers[bundle] != nil { return browser }
+    private static func adapter(for app: NSRunningApplication) -> ((NSRunningApplication) -> [String: Any])? {
+        if app.bundleIdentifier == "com.apple.finder" { return finder }
+        if browsers[app.bundleIdentifier ?? ""] != nil { return browser }
+        if deskCommand(app) != nil { return desk }
         return nil
+    }
+
+    // MARK: - an app with its own answer
+
+    /// An app that ships a command of its own name at Contents/Resources,
+    /// whose `desk` subcommand prints what the app is showing: `open ...`,
+    /// `picked ...`. That is the best reading there is, in the app's own
+    /// words, and it costs nothing to support: the app just has to be one.
+    static func deskCommand(_ app: NSRunningApplication) -> URL? {
+        guard let bundle = app.bundleURL, let name = app.localizedName?.lowercased(), !name.isEmpty
+        else { return nil }
+        let url = bundle.appending(path: "Contents/Resources/\(name)")
+        return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
+    }
+
+    private static func desk(_ app: NSRunningApplication) -> [String: Any] {
+        guard let cmd = deskCommand(app) else { return [:] }
+        let p = Process()
+        p.executableURL = cmd
+        p.arguments = ["desk"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return [:] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        guard let text = String(data: data, encoding: .utf8) else { return [:] }
+        var d: [String: Any] = [:]
+        for line in text.split(separator: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            for key in ["open", "picked"] where t.hasPrefix(key + " ") {
+                d[key] = t.dropFirst(key.count).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return d
     }
 
     // MARK: - Finder: the folder in front and the files picked in it

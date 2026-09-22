@@ -123,6 +123,11 @@ enum Render {
             if let u = e["url"] as? String { s += " \(u)" }
             s += q(e["pageTitle"])
             return s
+        case "desk":
+            var s = app
+            if let o = e["open"] as? String { s += " open \(o)" }
+            if let p = e["picked"] as? String { s += " · picked \(p)" }
+            return s
         case "finder":
             var s = "finder"
             if let f = e["folder"] as? String { s += " in \(f)" }

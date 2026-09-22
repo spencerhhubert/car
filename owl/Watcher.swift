@@ -91,10 +91,10 @@ final class Watcher {
         } else if let sel = r.focus["selectedText"], sel != last.focus["selectedText"] ?? "" {
             session.event("select", ["app": r.app, "text": sel], at: t)
         }
-        if !(NSDictionary(dictionary: r.extra).isEqual(to: last.extra)) {
+        if !r.extra.isEmpty, !(NSDictionary(dictionary: r.extra).isEqual(to: last.extra)) {
             var f = r.extra
             f["app"] = r.app
-            let kind = r.bundle == "com.apple.finder" ? "finder" : "page"
+            let kind = r.bundle == "com.apple.finder" ? "finder" : (r.extra["url"] != nil ? "page" : "desk")
             session.event(kind, f, at: t)
             if shot == nil, kind == "page" { shot = "page" }
         }
@@ -111,7 +111,7 @@ final class Watcher {
         return k
     }
 
-    private func take(reason: String, delay: Double = 0.25) {
+    private func take(reason: String, delay: Double = 0.25, force: Bool = false) {
         guard let front = NSWorkspace.shared.frontmostApplication else { return }
         let pid = front.processIdentifier
         let app = front.localizedName ?? ""
@@ -121,7 +121,8 @@ final class Watcher {
             try? await Task.sleep(for: .seconds(delay))
             let t = self.session.now
             let name = String(format: "%08d", t)
-            if let file = await self.shots.take(pid: pid, to: self.session.dir.appending(path: "shots"), name: name) {
+            if let file = await self.shots.take(pid: pid, to: self.session.dir.appending(path: "shots"),
+                                                name: name, force: force) {
                 self.session.event("shot", ["file": "shots/\(file)", "why": reason, "app": app, "title": title], at: t)
             }
         }
@@ -143,7 +144,9 @@ final class Watcher {
                 }
             }
             session.event("click", f, at: t)
-            take(reason: "click", delay: 0.35)
+            // A click is a moment worth a picture even when little changed:
+            // a scrub on a slider moves a few pixels.
+            take(reason: "click", delay: 0.35, force: true)
             scheduleTick()
         case .scrollWheel:
             scrollDelta += Double(e.scrollingDeltaY)
@@ -170,14 +173,19 @@ final class Watcher {
 
     private func key(_ e: NSEvent) {
         let mods = e.modifierFlags.intersection([.command, .control, .option, .shift])
-        let special: [UInt16: String] = [36: "return", 48: "tab", 53: "esc", 76: "enter",
-                                         123: "←", 124: "→", 125: "↓", 126: "↑"]
-        if mods.contains(.command) || mods.contains(.control) || special[e.keyCode] != nil {
-            var chord = ""
-            if mods.contains(.control) { chord += "⌃" }
-            if mods.contains(.option) { chord += "⌥" }
-            if mods.contains(.shift) { chord += "⇧" }
-            if mods.contains(.command) { chord += "⌘" }
+        let special: [UInt16: String] = [36: "return", 48: "tab", 53: "esc", 76: "enter", 49: "space",
+                                         51: "delete", 123: "←", 124: "→", 125: "↓", 126: "↑"]
+        var chord = ""
+        if mods.contains(.control) { chord += "⌃" }
+        if mods.contains(.option) { chord += "⌥" }
+        if mods.contains(.shift) { chord += "⇧" }
+        if mods.contains(.command) { chord += "⌘" }
+        // A shortcut, or any key outside a text field (space plays, arrows
+        // step, a letter is a command), is an action and is named. Inside a
+        // text field, plain keys are typing and are only counted.
+        let action = mods.contains(.command) || mods.contains(.control)
+            || (special[e.keyCode] != nil && e.keyCode != 49 && e.keyCode != 51) || !focusedIsText()
+        if action {
             chord += special[e.keyCode] ?? (e.charactersIgnoringModifiers ?? "").uppercased()
             flushTyping()
             session.event("key", ["chord": chord, "app": last.app])
@@ -189,6 +197,12 @@ final class Watcher {
         typingTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.flushTyping() }
         }
+    }
+
+    private func focusedIsText() -> Bool {
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              let el = AX.element(AX.app(front.processIdentifier), kAXFocusedUIElementAttribute) else { return false }
+        return TextProbe.isEditableText(el)
     }
 
     private func flushTyping() {

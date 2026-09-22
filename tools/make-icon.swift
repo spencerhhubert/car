@@ -2,8 +2,8 @@
 //
 //     swift tools/make-icon.swift        (from the repo root)
 //
-// Writes owl/Assets.xcassets in place. build.sh runs it when the catalog is
-// missing; the output is gitignored so a clone regenerates it.
+// Writes owl/Assets.xcassets in place; the output is committed, and build.sh
+// runs this only when the catalog is missing.
 import AppKit
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)

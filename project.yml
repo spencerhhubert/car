@@ -1,0 +1,43 @@
+name: owl
+options:
+  bundleIdPrefix: com.owl
+  deploymentTarget:
+    macOS: "26.0"
+targets:
+  owl:
+    type: application
+    platform: macOS
+    sources: [owl]
+    info:
+      path: owl/Info.plist
+      properties:
+        # Menu bar only. The recording pill is its own floating panel; there is
+        # no window to put in the Dock.
+        LSUIElement: true
+        CFBundleDisplayName: owl
+        NSHumanReadableCopyright: ""
+        NSMicrophoneUsageDescription: "owl records your voice for the length of a session you start by holding Option."
+        # Finder's selection and a browser's front tab are read with Apple
+        # events when the accessibility tree does not carry them.
+        NSAppleEventsUsageDescription: "owl asks Finder which files you have selected and a browser which page is open, so a session can say what was in front of you."
+    entitlements:
+      path: owl/owl.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        # Hardened runtime gates the microphone and Apple events behind these
+        # even for an unsandboxed app; without them macOS denies rather than
+        # prompts and the app never appears in the privacy pane.
+        com.apple.security.device.audio-input: true
+        com.apple.security.automation.apple-events: true
+    settings:
+      base:
+        PRODUCT_NAME: owl
+        PRODUCT_BUNDLE_IDENTIFIER: com.owl.mac
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Development"
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_VERSION: "5"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: 1
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities

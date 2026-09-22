@@ -25,10 +25,13 @@ enum Render {
         head.append(clock(Int(secs * 1000)) + " long")
         head.append("\(events.count) events")
         let shots = events.filter { $0["kind"] as? String == "shot" }.count
-        head.append("\(shots) pictures")
+        let screenOff = events.first { $0["kind"] as? String == "session" && $0["phase"] as? String == "start" }
+            .map { ($0["screen"] as? Bool) == false } ?? false
+        head.append("\(shots) pictures" + (screenOff ? " (Screen Recording was not granted)" : ""))
         if let tm = meta["textModel"] as? String { head.append("words by \(tm)") }
         if let ts = meta["timeSource"] as? String { head.append("times by \(ts)") }
         lines.append(head.joined(separator: " · "))
+        if let note = meta["note"] as? String { lines.append(""); lines.append("Note: \(note)") }
         lines.append("")
         lines.append("Every word with its time is in `words.json`; the raw events are `events.jsonl`; pictures are in `shots/`.")
         lines.append("")

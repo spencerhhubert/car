@@ -76,24 +76,31 @@ enum AX {
         let role = string(e, kAXRoleAttribute) ?? ""
         d["role"] = role
         if let sub = string(e, kAXSubroleAttribute), sub != role { d["subrole"] = sub }
-        if let t = string(e, kAXTitleAttribute), !t.isEmpty { d["title"] = t }
-        if let desc = string(e, kAXDescriptionAttribute), !desc.isEmpty { d["description"] = desc }
-        if let h = string(e, kAXHelpAttribute), !h.isEmpty { d["help"] = h }
-        if let ph = string(e, "AXPlaceholderValue"), !ph.isEmpty { d["placeholder"] = ph }
-        if let u = string(e, kAXURLAttribute), !u.isEmpty { d["url"] = u }
-        if string(e, kAXSubroleAttribute) != kAXSecureTextFieldSubrole, let v = string(e, kAXValueAttribute), !v.isEmpty {
-            d["value"] = String(v.prefix(valueLimit))
+        if let t = clean(string(e, kAXTitleAttribute), valueLimit) { d["title"] = t }
+        if let desc = clean(string(e, kAXDescriptionAttribute), valueLimit) { d["description"] = desc }
+        if let h = clean(string(e, kAXHelpAttribute), valueLimit) { d["help"] = h }
+        if let ph = clean(string(e, "AXPlaceholderValue"), valueLimit) { d["placeholder"] = ph }
+        if let u = clean(string(e, kAXURLAttribute), 500) { d["url"] = u }
+        if string(e, kAXSubroleAttribute) != kAXSecureTextFieldSubrole,
+           let v = clean(string(e, kAXValueAttribute), valueLimit) {
+            d["value"] = v
         }
-        if let sel = string(e, kAXSelectedTextAttribute), !sel.isEmpty {
-            d["selectedText"] = String(sel.prefix(valueLimit))
-        }
+        if let sel = clean(string(e, kAXSelectedTextAttribute), valueLimit) { d["selectedText"] = sel }
         // A cell or row says what it holds through its children's titles.
         if ["AXCell", kAXRowRole, "AXStaticText"].contains(role), d["title"] == nil, d["value"] == nil {
             let words = elements(e, kAXChildrenAttribute).prefix(6).compactMap {
-                string($0, kAXValueAttribute) ?? string($0, kAXTitleAttribute)
-            }.filter { !$0.isEmpty }
-            if !words.isEmpty { d["text"] = words.joined(separator: " · ").prefix(valueLimit).description }
+                clean(string($0, kAXValueAttribute) ?? string($0, kAXTitleAttribute), 60)
+            }
+            if !words.isEmpty { d["text"] = String(words.joined(separator: " · ").prefix(valueLimit)) }
         }
         return d
+    }
+
+    /// Runs of whitespace (a terminal's screen is mostly spaces) become one
+    /// space; nothing left means no value.
+    static func clean(_ s: String?, _ limit: Int) -> String? {
+        guard let s else { return nil }
+        let t = s.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
+        return t.isEmpty ? nil : String(t.prefix(limit))
     }
 }

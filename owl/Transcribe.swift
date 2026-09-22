@@ -49,15 +49,28 @@ enum Transcribe {
         }
         summary.timeSource = options.timeSource
 
-        // 1: the words.
+        // 1: the words. A chat model handed silence does not say so; it
+        // writes a paragraph. So a take whose microphone never rose above
+        // the floor is not sent, and an answer with more words than a person
+        // can say in the time is thrown away.
         var text: String
-        if let key = Config.openRouterKey {
+        let peak = (meta["peakDb"] as? Double) ?? 0
+        if peak < -60 {
+            text = ""
+            summary.textModel = "none"
+            summary.note = String(format: "nothing heard (peak %.0f dB); the text model was not asked", peak)
+        } else if let key = Config.openRouterKey {
             let (data, format) = try upload(audio)
             let (t, cost) = try await OpenRouter.transcribe(audio: data, format: format,
                                                             model: options.textModel, key: key)
             text = t
             summary.cost += cost ?? 0
             summary.textModel = options.textModel
+            let n = t.split(whereSeparator: { $0.isWhitespace }).count
+            if Double(n) > 4.5 * max(duration, 1) + 5 {
+                text = ""
+                summary.note = "\(options.textModel) returned \(n) words for \(Int(duration)) s of audio; discarded as invented"
+            }
         } else {
             text = timed.map(\.text).joined(separator: " ")
             summary.textModel = "apple"
@@ -74,6 +87,12 @@ enum Transcribe {
         summary.words = words.count
         summary.matched = words.filter { $0.how.hasPrefix("matched") }.count
         summary.onsets = words.filter { $0.how.hasSuffix("+onset") }.count
+        // Words that line up with nothing the recognizer heard are not
+        // verified by anything; say so rather than time them anyway.
+        let unverified = summary.matched == 0 && words.count > 10 && !timed.isEmpty
+        if unverified {
+            summary.note = "no word of the transcript lines up with what the recognizer heard; treat it as unverified"
+        }
 
         // Onto the session clock. The microphone's clock and the machine's
         // drift apart by parts per million; the ratio of wall time to sound
@@ -97,6 +116,8 @@ enum Transcribe {
             .write(to: dir.appending(path: "words.json"))
         meta["textModel"] = summary.textModel
         meta["timeSource"] = summary.timeSource
+        meta["note"] = summary.note.isEmpty ? nil : summary.note
+        meta["unverified"] = unverified ? true : nil
         meta["cost"] = ((meta["cost"] as? Double) ?? 0) + summary.cost
         try JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys])
             .write(to: dir.appending(path: "meta.json"))

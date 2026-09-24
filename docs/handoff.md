@@ -29,7 +29,11 @@ and hung (full CPU, never settling) after a minute of mouse-wheel scrolling:
 SwiftUI measuring rows and moving the view to hold its place, round and
 round. It is now an AppKit table whose row heights car works out itself
 (`ScriptLayout`), and `Watchdog.swift` samples the app if its main thread
-ever stops answering for three seconds.
+ever stops answering for three seconds. The table hung once too (2026-09-24,
+a live session on screen, a mouse attached), and the watchdog's sample
+showed why: it was being reloaded from inside its own layout pass. That
+rule, and the check that now fails on it, are in
+`docs/design-system/engineering.md`.
 
 Verified:
 - CarKit's tests (`swift test --package-path CarKit`): alignment, onsets,
@@ -37,8 +41,10 @@ Verified:
   geometry, fading, the catalog, and the script's rows (what goes near a
   remark, words still to come, markers, repeats folding, long gaps) and
   quick dictation's stretch.
-- The window against real sessions (`tools/viewcheck`): 600 wheel steps,
-  200 jumps and 60 resizes with no step over 100 ms; every row's height at
+- The window against real sessions (`tools/viewcheck`): a live session's
+  rows arriving while it follows the bottom; 600 wheel steps, 200 jumps and
+  60 resizes with both kinds of scroller, no step over 100 ms, and no
+  reentrant table change; every row's height at
   least what SwiftUI needs at three widths; the script, sidebar rows,
   picture viewer and Settings rendered in light and dark.
 - Earlier: a marker waiting for its words, a session picked up after a

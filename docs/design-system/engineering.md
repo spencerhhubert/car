@@ -21,6 +21,17 @@ So the rule is: **SwiftUI decides no size that anything else depends on.**
 AppKit owns every size that moves: the window, the split, scrolling, and the
 height of every row. SwiftUI draws inside sizes it is given.
 
+AppKit has its own version of the same loop, and the table hung on it once:
+a row's hosting view, laid out inside the table's layout, asked for its safe
+area, which walked up to the table and made it tile; the tile reported a new
+width, and the handler reloaded every row inside that same layout pass. So:
+**nothing changes a table while AppKit is laying it out.** A size change is
+noticed and acted on at the next turn of the run loop; a view in a row has
+no safe area (`safeAreaRegions = []`); scrollers never hide themselves, since
+with a mouse attached a scroller takes room and one that came and went would
+change the width of every row. AppKit prints "reentrant operation in its
+NSTableView delegate" when this rule is broken, and viewcheck fails on it.
+
 ## Who owns what
 
 - **AppKit owns the app, the window and the chrome.** `App.swift` is an
@@ -99,9 +110,15 @@ tools/viewcheck/run.sh <session id> [light|dark]
 builds a small program from the app's own sources, reads a backup of a
 catalog (car-dev's, or `CATALOG=`), and:
 
+- **live**: holds back everything after the session's first minute and gives
+  it back a few seconds of session at a time, the way a recording grows,
+  while the script follows the bottom and is scrolled and resized, with a
+  mouse's scrollers;
 - **stress**: scrolls the real window with mouse-wheel events and jumps and
-  resizes it, handing the events to the window's own views, and fails on any
-  step the main thread took more than a quarter second to come back from;
+  resizes it, with a trackpad's scrollers and a mouse's, handing the events
+  to the window's own views, and fails on any step the main thread took more
+  than a quarter second to come back from, and on a step that never comes
+  back;
 - **fit**: checks every row's height from `ScriptLayout` against the height
   SwiftUI needs for it at three widths, and fails on any row that would be
   cut off;

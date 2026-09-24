@@ -11,6 +11,13 @@ import SwiftUI
 //
 // A session being recorded grows at the bottom; if the table was at the
 // bottom it stays there. A picture opens over the table (PictureViewer).
+//
+// Nothing here changes the table while AppKit is laying it out. A new width
+// is noticed on the clip view and acted on at the next turn of the run loop,
+// and a row's SwiftUI view never asks its way up to the table (no safe
+// area): the first script hung when a row, laid out inside the table's
+// layout, made the table tile, which reported a new width, which reloaded
+// every row inside that same layout, round and round.
 @MainActor
 final class ScriptController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     private let model: ScriptModel
@@ -26,6 +33,8 @@ final class ScriptController: NSViewController, NSTableViewDataSource, NSTableVi
     private var overlay: NSView?
     private var overlaid: (viewing: Int?, missing: Bool) = (nil, false)
     private var currentID: String?
+    /// A new width is waiting to be laid out.
+    private var widthChanged = false
 
     init(model: ScriptModel) {
         self.model = model
@@ -50,13 +59,16 @@ final class ScriptController: NSViewController, NSTableViewDataSource, NSTableVi
         table.delegate = self
         scroll.documentView = table
         scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
+        // Always there: with a mouse attached the scroller takes room, and
+        // one that came and went with the script's length would change the
+        // rows' width, and every row's height with it.
+        scroll.autohidesScrollers = false
         scroll.drawsBackground = true
         scroll.backgroundColor = .textBackgroundColor
         scroll.contentView.postsBoundsChangedNotifications = false
-        table.postsFrameChangedNotifications = true
+        scroll.contentView.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(resized), name: NSView.frameDidChangeNotification,
-                                               object: table)
+                                               object: scroll.contentView)
         view = scroll
     }
 
@@ -101,6 +113,11 @@ final class ScriptController: NSViewController, NSTableViewDataSource, NSTableVi
         }
         let wasAtBottom = atBottom
         let newSession = lines.isEmpty || s.id != currentID
+        let width = scroll.contentView.bounds.width
+        if abs(width - layout.width) > 0.5 {
+            layout = ScriptLayout(width: width)
+            heights = [:]
+        }
         currentID = s.id
         // A row that did not change keeps its height; the footer's words
         // change with the session.
@@ -127,8 +144,17 @@ final class ScriptController: NSViewController, NSTableViewDataSource, NSTableVi
         table.scrollRowToVisible(lines.count - 1)
     }
 
+    /// The clip view changed size, in the middle of a layout pass: lay the
+    /// rows out again once it is over.
     @objc private func resized() {
-        let width = table.frame.width
+        guard !widthChanged else { return }
+        widthChanged = true
+        DispatchQueue.main.async { [weak self] in self?.relayout() }
+    }
+
+    private func relayout() {
+        widthChanged = false
+        let width = scroll.contentView.bounds.width
         guard abs(width - layout.width) > 0.5 else { return }
         let wasAtBottom = atBottom
         layout = ScriptLayout(width: width)
@@ -207,6 +233,9 @@ private final class LineCell: NSTableCellView {
         super.init(frame: .zero)
         identifier = Self.id
         host.sizingOptions = []
+        // A row has no safe area to keep out of, and asking for one walks up
+        // to the table and makes it tile in the middle of its own layout.
+        host.safeAreaRegions = []
         host.autoresizingMask = [.width, .height]
         host.frame = bounds
         addSubview(host)

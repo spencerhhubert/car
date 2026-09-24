@@ -5,8 +5,12 @@ import SwiftUI
 // viewcheck OUT ID light|dark: check car's window against session ID.
 //
 //   stress   scroll it (a mouse wheel, jumps) and resize it, the way a
-//            person does, and report any step the main thread took longer
+//            person does, with the scrollers a trackpad gives and the ones
+//            a mouse gives, and report any step the main thread took longer
 //            than a quarter second to come back from
+//   live     the session as if it were being recorded: its rows arrive a few
+//            seconds at a time while the script follows the bottom, is
+//            scrolled and is resized
 //   fit      every row's height as ScriptLayout gives it, against the height
 //            SwiftUI needs for it, at three widths: a row that needs more
 //            would be cut off
@@ -22,7 +26,30 @@ let out = URL(fileURLWithPath: args[1])
 let id = args[2]
 let dark = args.count > 3 && args[3] == "dark"
 let mode = dark ? "dark" : "light"
+let catalog = ProcessInfo.processInfo.environment["CAR_ROOT"].map { $0 + "/car.sqlite" } ?? ""
 var failed = false
+
+// A step that never comes back is a hang: say which, and stop.
+nonisolated(unsafe) var beat = ProcessInfo.processInfo.systemUptime
+nonisolated(unsafe) var phase = "start"
+Thread.detachNewThread {
+    while true {
+        Thread.sleep(forTimeInterval: 1)
+        if ProcessInfo.processInfo.systemUptime - beat > 5 {
+            print("HUNG     during \(phase): the main thread has not come back for 5 s")
+            exit(3)
+        }
+    }
+}
+
+/// Run SQL on the copy of the catalog.
+func sql(_ statements: String) {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+    p.arguments = [catalog, statements]
+    try? p.run()
+    p.waitUntilExit()
+}
 
 @MainActor func snap(_ view: NSView, _ name: String) {
     view.layoutSubtreeIfNeeded()
@@ -73,9 +100,12 @@ var failed = false
 
 /// Time one step; complain about a slow one.
 @MainActor func step(_ what: String, _ body: () -> Void) -> Double {
+    phase = what
+    beat = ProcessInfo.processInfo.systemUptime
     let start = Date()
     body()
     RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+    beat = ProcessInfo.processInfo.systemUptime
     let took = Date().timeIntervalSince(start)
     if took > 0.25 {
         print("stress   SLOW \(what): \(Int(took * 1000)) ms")
@@ -84,12 +114,13 @@ var failed = false
     return took
 }
 
-@MainActor func stress(_ window: NSWindow) {
+@MainActor func stress(_ window: NSWindow, _ style: NSScroller.Style) {
     guard let sv = tableScroll(in: window.contentView!), let doc = sv.documentView else {
         print("stress   no table")
         failed = true
         return
     }
+    sv.scrollerStyle = style
     var worst = 0.0
     var rng = SystemRandomNumberGenerator()
     for i in 0..<600 {
@@ -114,7 +145,42 @@ var failed = false
         })
     }
     window.setFrame(frame, display: true)
-    print("stress   600 wheel steps, 200 jumps, 60 resizes; slowest \(Int(worst * 1000)) ms; content \(Int(doc.frame.height)) pt")
+    print("stress   \(style == .legacy ? "mouse" : "trackpad") scrollers: 600 wheel steps, 200 jumps, 60 resizes; slowest \(Int(worst * 1000)) ms; content \(Int(doc.frame.height)) pt")
+}
+
+/// Take the session back to its first minute, then give its rows back a few
+/// seconds of session at a time, the way a recording grows, while the script
+/// follows the bottom, and is scrolled and resized now and then.
+@MainActor func live(_ window: NSWindow, until end: Int) {
+    guard let sv = tableScroll(in: window.contentView!) else { print("live     no table"); failed = true; return }
+    sv.scrollerStyle = .legacy
+    let frame = window.frame
+    var worst = 0.0
+    var t = 60_000
+    var i = 0
+    while t < end {
+        t += 8_000
+        i += 1
+        worst = max(worst, step("live \(i)") {
+            sql("""
+                INSERT INTO chunks SELECT * FROM held_chunks WHERE start_ms <= \(t);
+                DELETE FROM held_chunks WHERE start_ms <= \(t);
+                INSERT INTO words SELECT * FROM held_words WHERE chunk IN (SELECT n FROM chunks WHERE session = '\(id)');
+                DELETE FROM held_words WHERE chunk IN (SELECT n FROM chunks WHERE session = '\(id)');
+                INSERT INTO events SELECT * FROM held_events WHERE t <= \(t);
+                DELETE FROM held_events WHERE t <= \(t);
+                """)
+            if i % 5 == 0, let e = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: 3, wheel2: 0,
+                                             wheel3: 0).flatMap(NSEvent.init(cgEvent:)) { sv.scrollWheel(with: e) }
+            if i % 7 == 0 {
+                let w = frame.width + CGFloat((i % 3) - 1) * 90
+                window.setFrame(NSRect(x: frame.minX, y: frame.minY, width: w, height: frame.height), display: true)
+            }
+        })
+        for _ in 0..<6 { worst = max(worst, step("live \(i), following") { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }) }
+    }
+    window.setFrame(frame, display: true)
+    print("live     \(i) arrivals over \(end / 60_000) min of session, following the bottom; slowest \(Int(worst * 1000)) ms")
 }
 
 @MainActor func fit(_ script: Script) {
@@ -124,6 +190,7 @@ var failed = false
         var short: [String] = []
         var air: [CGFloat] = []
         for line in lines {
+            beat = ProcessInfo.processInfo.systemUptime
             let given = line.height(in: layout, script: script, expanded: false)
             let view = LineView(line: line, script: script, layout: layout).fixedSize(horizontal: false, vertical: true)
                 .environment(\.colorScheme, dark ? .dark : .light)
@@ -145,7 +212,23 @@ struct Viewer: View {
     var body: some View { PictureViewer(script: script, viewing: $id) }
 }
 
+// The session's end, and everything after its first minute held back for
+// the live check to give back.
+let end = Int(ProcessInfo.processInfo.environment["END_MS"] ?? "") ?? 0
+sql("""
+    CREATE TABLE held_chunks AS SELECT * FROM chunks WHERE session = '\(id)' AND start_ms > 60000;
+    CREATE TABLE held_words AS SELECT * FROM words WHERE session = '\(id)' AND chunk IN (SELECT n FROM held_chunks);
+    CREATE TABLE held_events AS SELECT * FROM events WHERE session = '\(id)' AND t > 60000;
+    DELETE FROM words WHERE session = '\(id)' AND chunk IN (SELECT n FROM held_chunks);
+    DELETE FROM chunks WHERE session = '\(id)' AND start_ms > 60000;
+    DELETE FROM events WHERE session = '\(id)' AND t > 60000;
+    UPDATE sessions SET state = 'recording' WHERE id = '\(id)';
+    """)
+
 NSApplication.shared.setActivationPolicy(.accessory)
+// The main thread is alive whenever its run loop turns.
+let pulse = Timer(timeInterval: 0.5, repeats: true) { _ in beat = ProcessInfo.processInfo.systemUptime }
+RunLoop.main.add(pulse, forMode: .common)
 MainActor.assumeIsolated {
     let app = App()
     let w = MainWindow(app: app)
@@ -155,7 +238,9 @@ MainActor.assumeIsolated {
     unseen(window, 3)
     guard let model = (window.contentViewController as? NSSplitViewController)?.splitViewItems.last?.viewController,
           tableScroll(in: model.view) != nil else { print("no script on show"); failed = true; return }
-    stress(window)
+    live(window, until: end)
+    stress(window, .legacy)
+    stress(window, .overlay)
 
     // The script's rows at the heights the table gives them, clipped as the
     // table clips them.

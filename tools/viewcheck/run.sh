@@ -21,6 +21,13 @@ sed -i '' 's/^private struct/struct/' "$APP/ScriptView.swift" "$APP/Sidebar.swif
 
 mkdir -p "$WORK/root" "$WORK/out"
 sqlite3 "$CATALOG" ".backup '$WORK/root/car.sqlite'"
+END_MS=$(sqlite3 "$WORK/root/car.sqlite" "SELECT MAX(t) FROM events WHERE session = '$ID'")
 swift build --package-path "$HERE" -q
-CAR_ROOT="$WORK/root" "$HERE/.build/debug/viewcheck" "$WORK/out" "$ID" "$MODE"
+CAR_ROOT="$WORK/root" END_MS="$END_MS" "$HERE/.build/debug/viewcheck" "$WORK/out" "$ID" "$MODE" 2>&1 | tee "$WORK/log"
 echo "pictures in $WORK/out"
+# AppKit says so when the table is changed while it lays itself out, which
+# is how the script hung.
+if grep -q "reentrant operation" "$WORK/log"; then
+    echo "FAILED: the table was changed in the middle of its own layout (see above)" >&2
+    exit 1
+fi

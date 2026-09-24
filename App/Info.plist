@@ -28,7 +28,5 @@
 	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>owl records your voice for as long as a session you start with ⌘⇧R runs.</string>
-	<key>OwlReleases</key>
-	<string>spencerhhubert/owl</string>
 </dict>
 </plist>

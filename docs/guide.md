@@ -151,9 +151,11 @@ Two readings of what is in front of you, both always taken:
 - **Generic, every app.** The front app, its focused window's title and
   document (a path or URL, for apps that say), the focused element (role,
   title, value, selected text), clicks with the element under the pointer,
-  scrolls, shortcuts (`⌘S`), and typing as *how many keys went into which
-  field, and what the field then held*. Keystrokes themselves are never
-  logged, and a password field's value is never read.
+  scrolls, shortcuts (`⌘S`) and the keys that act (return, tab, esc, the
+  arrows), and typing as *how many keys went into which element, and what it
+  then held*. Every other key counts as typing wherever it goes (a terminal
+  does not look like a text field). Keystrokes themselves are never logged,
+  and a password field's value is never read.
 - **Adapters, for apps with a better answer.** Finder: the folder in front
   and the files selected in it. Browsers (Safari, Chrome, Brave, Arc, Edge,
   Vivaldi): the front tab's URL and title. An app that ships a command of its
@@ -183,32 +185,32 @@ session asks for one (the menu's *OpenRouter key* changes it). It is kept in
 comes from `OPENROUTER_API_KEY`. With *Remote model → none*, no key is needed
 and the words are the local model's.
 
-## Install and updates
+## Install
 
-Download `owl-X.Y.Z.zip` from the repository's
-[releases](https://github.com/spencerhhubert/owl/releases), unzip it and move
-`owl.app` to Applications. It is signed with Developer ID and notarized, so it
-opens like any app. At its first launch it links the `owl` command into
-`~/.local/bin`. Then, from its menu → Permissions: **Accessibility** (⌥ ⌥ and
-what is focused), **Microphone**, **Screen Recording** (pictures, and fading
-drawings when the screen changes), and **Automation** for Finder and each
-browser (their selection and tabs). Each is a one-time system prompt.
+owl is not distributed as a download: you build it. It needs macOS 26 (the
+on-device recognizer), Xcode, and `xcodegen` (`brew install xcodegen`);
+`ffmpeg` is optional (with it the voice is sent as a small mp3).
 
-owl keeps itself up to date. A few times a day it asks GitHub for the latest
-release; a newer one is downloaded and checked (its published checksum, a
-valid signature, the same signing team as the owl running), and the top of
-the menu offers it. It goes in only while nothing is recording or
-transcribing, and owl restarts into it. The version is at the top of the menu
-and in `owl version`.
+```
+./build.sh release
+```
 
-**Building it** needs macOS 26, Xcode and `xcodegen` (`brew install
-xcodegen`); `ffmpeg` is optional (with it the voice is sent as a small mp3).
-`./build.sh` runs OwlKit's tests and builds the development copy,
-`/Applications/owl-dev.app` and `owl-dev`, which runs beside the real one with
-its own catalog, sessions, settings, log and permissions, and its keys off
-until turned on from its menu (only one app can own ⌘⇧R). `tools/release.sh
-X.Y.Z` cuts a release: tests, a Developer ID signature, notarization, the tag,
-and the zip and its checksum on the releases page.
+runs OwlKit's tests, builds, signs with the first Apple Development identity
+in the keychain (ad hoc without one), installs `/Applications/owl.app`, and
+launches it; at launch it links the `owl` command into `~/.local/bin`. It
+refuses while owl is recording or transcribing, and otherwise quits the
+running copy properly first, so it is also how owl is updated. Plain
+`./build.sh` builds the development copy instead, `/Applications/owl-dev.app`
+and `owl-dev`, which runs beside the real one with its own catalog, sessions,
+settings, log and permissions, and its keys off until turned on from its menu
+(both copies can hold ⌘⇧R, and one press would start a session in each). The
+version, the commit it was built from, is at the top of the menu and in
+`owl version`.
+
+Then, from the owl menu → Permissions: **Accessibility** (⌥ ⌥ and what is
+focused), **Microphone**, **Screen Recording** (pictures, and fading drawings
+when the screen changes), and **Automation** for Finder and each browser
+(their selection and tabs). Each is a one-time system prompt.
 
 ## The command
 

@@ -39,23 +39,23 @@ models. The remote model (OpenRouter) writes the words, capped and timed out;
 the local model (Apple) keeps time with a deadline, since its model fetch has
 hung for minutes; both are chosen in the menu. On a real two-minute chunk that
 had cost $0.20 and seven minutes (Gemini looping on silence), the same chunk
-now costs $0.002 and three seconds. Releases are `tools/release.sh`, and the
-installed owl updates itself (`App/Update/Updater.swift`); no key ships.
+now costs $0.002 and three seconds. No key ships; a session asks for one.
 
-Not yet exercised: a release (it needs a Developer ID Application
-certificate, which the account does not have yet, and the `owl-notary`
-keychain profile), and so the updater end to end. `tools/live-test.txt` still
-plays the old hold-⌥ flow.
+GitHub releases and a self-updater were built and taken out again the same
+day: owl is built locally with `./build.sh release`, and whoever wants it
+builds it. (A Developer ID certificate can only be made by the account
+holder, and notarizing needs one.) Typing is never named key by key anywhere
+now: a terminal's keys had been logged one by one because a terminal does not
+look like a text field. `tools/live-test.txt` still plays the old hold-⌥ flow.
 
-## Before the first release of this
+## Before the real owl gets this build
 
 The real owl's sessions are still in the old per-folder files (meta.json,
 events.jsonl, words.json, audio.m4a). They go into its catalog the way
 owl-dev's did: an import that makes each old session one chunk, turns its
 events and pictures into rows, then removes the old files. Back the sessions
 folder up first. The old copy knows nothing of locks, so check its log for a
-session in progress before replacing it. Moving from its Apple Development
-signature to Developer ID means granting its four permissions once more.
+session in progress before replacing it.
 
 ## What is next
 

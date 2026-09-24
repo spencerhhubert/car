@@ -52,11 +52,10 @@ taken while it was up has it drawn in with its number:
 
 ## Try it
 
-Needs macOS 26. Download the latest `owl-X.Y.Z.zip` from
-[releases](https://github.com/spencerhhubert/owl/releases), move `owl.app` to
-Applications, open it, and grant its permissions from the 🦉 menu; it asks for
-an OpenRouter key the first time it needs one, and keeps itself up to date.
-How to start a session, mark, draw and stop is in the
+Needs macOS 26, Xcode and `xcodegen`. There is no download: clone this and
+run `./build.sh release`, which builds, signs and installs it, then grant its
+permissions from the 🦉 menu. It asks for an OpenRouter key the first time it
+needs one. How to start a session, mark, draw and stop is in the
 [guide](docs/guide.md). An agent learns to read sessions from
 [`skill/SKILL.md`](skill/SKILL.md).
 

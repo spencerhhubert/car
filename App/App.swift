@@ -20,10 +20,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let drawing = Drawing()
     lazy var keys = Keys(onToggle: { [weak self] in self?.toggle() }, onMarker: { [weak self] in self?.marker() })
     lazy var pill = Pill(drawing: drawing)
-    lazy var updater = Updater(isBusy: { [weak self] in self.map { $0.recording != nil || $0.starting || !$0.finishing.isEmpty } ?? false })
     private(set) var recording: Recording?
     /// A start is waiting on the microphone.
-    private(set) var starting = false
+    private var starting = false
     /// Sessions finishing their last chunks, oldest first.
     private(set) var finishing: [String] = []
     private var outcome: (phase: Pill.Phase, until: Date)?
@@ -51,11 +50,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         term.setEventHandler { NSApp.terminate(nil) }
         term.resume()
         terminate = term
-        Log.line("\(Config.name) \(Updater.version) up (accessibility \(Keys.trusted), mic \(Mic.permissionGranted), " +
+        Log.line("\(Config.name) \(Config.version) up (accessibility \(Keys.trusted), mic \(Mic.permissionGranted), " +
                  "screen \(Screenshot.hasPermission))")
         linkCommand()
         finishOrphans()
-        updater.start()
     }
 
     func applicationWillTerminate(_ note: Notification) {
@@ -167,7 +165,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             finishing.removeAll { $0 == id }
             flash(o.state == .done ? .said("\(o.words) words", ok: true)
                                    : .said(o.error ?? "some chunks failed", ok: false))
-            updater.installIfIdle()
         }
     }
 

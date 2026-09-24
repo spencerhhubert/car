@@ -45,6 +45,8 @@ public struct Config: Codable, Sendable {
     /// "owl" or "owl-dev": the executable's name, which is also the command's.
     public static let name = bundle.executableURL?.lastPathComponent ?? "owl"
     public static var isDev: Bool { name != "owl" }
+    /// The commit this copy was built from.
+    public static var version: String { bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?" }
 
     public static let root = ProcessInfo.processInfo.environment["OWL_ROOT"].map { URL(fileURLWithPath: $0) }
         ?? support(name)

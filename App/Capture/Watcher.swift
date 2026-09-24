@@ -21,10 +21,13 @@ import OwlKit
 // asks for one more after it, so readings never interleave. An event carries
 // the time it happened, not the time its reading came back.
 //
-// Keys are never logged as keystrokes. A shortcut (anything with ⌘ or ⌃, and
-// return, tab, escape) is logged as the chord; plain typing is counted and,
-// when it pauses, logged as the field it went into with that field's value,
-// and never for a password field.
+// Keys are never logged as keystrokes. A shortcut (anything with ⌘ or ⌃) and
+// the keys that act rather than type (return, tab, escape, the arrows) are
+// logged as the chord. Every other key, anywhere (a text field, a terminal, a
+// game), is typing: counted, and when it pauses, logged as how many keys went
+// into which element, with what that element then held, never for a password
+// field. Where the focus is does not decide this: a terminal does not look like
+// a text field, and naming its keys would have written down what was typed.
 @MainActor
 final class Watcher {
     private let session: Session
@@ -293,22 +296,16 @@ final class Watcher {
         take("scroll", delay: 0.1)
     }
 
+    /// The keys that act rather than type.
     private static let specialKeys: [UInt16: String] = [
-        36: "return", 48: "tab", 53: "esc", 76: "enter", 49: "space",
-        51: "delete", 123: "←", 124: "→", 125: "↓", 126: "↑",
+        36: "return", 48: "tab", 53: "esc", 76: "enter", 123: "←", 124: "→", 125: "↓", 126: "↑",
     ]
 
     private func key(_ e: NSEvent) {
         let mods = e.modifierFlags.intersection([.command, .control, .option, .shift])
         let special = Self.specialKeys[e.keyCode]
-        let command = mods.contains(.command) || mods.contains(.control)
-            || (special != nil && e.keyCode != 49 && e.keyCode != 51)
-        // Plain keys in a text field are typing, and only counted; anywhere
-        // else they are commands (space plays, a letter is a tool) and named.
-        // The last reading says where focus is. When it says "not a text
-        // field", ask again now: naming a key that went into a field would
-        // log what was typed.
-        if !command, last.focusIsText || focusedIsText() {
+        let named = mods.contains(.command) || mods.contains(.control) || special != nil
+        if !named {
             typingCount += 1
             typingTimer?.invalidate()
             typingTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { [weak self] _ in
@@ -325,14 +322,6 @@ final class Watcher {
         flushTyping()
         session.event("key", ["chord": chord, "app": last.app])
         if e.keyCode == 36 || e.keyCode == 76 || mods.contains(.command) { scheduleTick() }
-    }
-
-    /// Asked on the main thread, and only for a key the last reading says did
-    /// not go into a text field; bounded by the messaging timeout.
-    private func focusedIsText() -> Bool {
-        guard let front = NSWorkspace.shared.frontmostApplication,
-              let el = AX.element(AX.app(front.processIdentifier), kAXFocusedUIElementAttribute) else { return false }
-        return AX.takesTyping(el)
     }
 
     private func flushTyping() {

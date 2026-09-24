@@ -141,7 +141,7 @@ enum CLI {
                 print("key         \(Config.openRouterKey == nil ? "missing" : "present")")
                 print("sessions    \(Config.sessionsDir.path)")
             case "version":
-                print("\(Config.name) \(Config.bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                print("\(Config.name) \(Config.version)")
             case "guide":
                 guard let url = Config.bundle.url(forResource: "guide", withExtension: "md"),
                       let text = try? String(contentsOf: url, encoding: .utf8)

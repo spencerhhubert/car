@@ -1,16 +1,21 @@
 #!/bin/bash
-# Build, sign and install the development copy of owl: /Applications/owl-dev.app
-# and the owl-dev command, with its own catalog, sessions, settings, log and
-# permissions (Application Support/owl-dev). Its keys are off until turned on
-# from its menu. Only owl-dev is ever stopped or replaced; the owl in use
-# comes from a release (tools/release.sh) and updates itself.
+# Build, sign and install owl on this Mac. Two copies, side by side:
 #
-#   ./build.sh
+#   ./build.sh            the development copy: /Applications/owl-dev.app and
+#                         the owl-dev command, with its own catalog, sessions,
+#                         settings, log and permissions (Application
+#                         Support/owl-dev). Its keys are off until turned on
+#                         from its menu. Only owl-dev is stopped or replaced.
+#   ./build.sh release    the owl in use: /Applications/owl.app and the owl
+#                         command. Refuses while it is recording or
+#                         transcribing; otherwise quits it (a quit closes a
+#                         session properly) and swaps in the new build.
 #
-# The copy is installed at a fixed path and signed with a stable identity on
+# owl is not distributed as a download: whoever wants it builds it with this.
+# Each copy is installed at a fixed path and signed with a stable identity on
 # purpose: macOS keys the Accessibility, Microphone, Screen Recording and
 # Automation grants to bundle id + signing identity + path, and a path that
-# changes every build loses them.
+# changes every build loses them. The two copies have separate grants.
 #
 # Signing: the first "Apple Development" identity in the keychain, with the
 # team read off its certificate, so nothing about an account is written here.
@@ -19,9 +24,12 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 export PATH="/opt/homebrew/bin:$PATH"
-[ $# -eq 0 ] || { echo "usage: ./build.sh (the dev copy; releases are tools/release.sh)" >&2; exit 2; }
-NAME=owl-dev
-BUNDLE_ID=com.owl.mac.dev
+
+case "${1:-dev}" in
+    dev) NAME=owl-dev; BUNDLE_ID=com.owl.mac.dev ;;
+    release) NAME=owl; BUNDLE_ID=com.owl.mac ;;
+    *) echo "usage: ./build.sh [release]" >&2; exit 2 ;;
+esac
 APP="/Applications/$NAME.app"
 DERIVED="$HERE/.build/$NAME"
 
@@ -49,7 +57,7 @@ LOG="$DERIVED/build.log"
 mkdir -p "$DERIVED"
 if ! xcodebuild -project owl.xcodeproj -scheme owl -configuration Release -derivedDataPath "$DERIVED" \
         PRODUCT_NAME="$NAME" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" CODE_SIGN_STYLE=Manual \
-        MARKETING_VERSION="dev-$(git rev-parse --short HEAD)" \
+        MARKETING_VERSION="$(git -C "$HERE" describe --always --dirty)" \
         "${SIGNING[@]}" build >"$LOG" 2>&1; then
     grep -E 'error:' "$LOG" | sort -u | head -30
     echo "build failed; the whole log is $LOG" >&2

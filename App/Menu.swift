@@ -198,36 +198,16 @@ extension App {
         }
     }
 
-    /// The version, and the update when there is one.
+    /// Which build this is; in the dev copy, whether its keys are on.
     private func addVersion(to menu: NSMenu) {
-        guard Updater.enabled else {
-            menu.addItem(disabled("\(Config.name) \(Updater.version)"))
-            // Both copies can hold ⌘⇧R at once, and one press would start a
-            // session in each, so the dev copy's keys start off; say so here.
-            if Config.isDev, !config.keys {
-                menu.addItem(item("⌘⇧R and ⌥ ⌥ are off in \(Config.name) · turn them on", #selector(toggleKeys)))
-            }
-            menu.addItem(.separator())
-            return
-        }
-        switch updater.state {
-        case .ready(let v):
-            menu.addItem(item(updater.installWhenIdle ? "Updating to \(v) when nothing is recording…"
-                                                      : "Update to owl \(v) (restarts owl)", #selector(update)))
-        case .downloading(let v):
-            menu.addItem(disabled("Downloading owl \(v)…"))
-        case .checking:
-            menu.addItem(disabled("owl \(Updater.version) · checking for updates…"))
-        case .failed(let why):
-            menu.addItem(item("owl \(Updater.version) · update check failed: \(why.prefix(60)) — try again", #selector(checkUpdates)))
-        case .current, .idle:
-            menu.addItem(item("owl \(Updater.version) · check for updates", #selector(checkUpdates)))
+        menu.addItem(disabled("\(Config.name) \(Config.version)"))
+        // Both copies can hold ⌘⇧R at once, and one press would start a
+        // session in each, so the dev copy's keys start off; say so here.
+        if Config.isDev, !config.keys {
+            menu.addItem(item("⌘⇧R and ⌥ ⌥ are off in \(Config.name) · turn them on", #selector(toggleKeys)))
         }
         menu.addItem(.separator())
     }
-
-    @objc private func update() { updater.install() }
-    @objc private func checkUpdates() { Task { await updater.check() } }
     @objc func toggleKeys() {
         config.keys.toggle()
         config.save()

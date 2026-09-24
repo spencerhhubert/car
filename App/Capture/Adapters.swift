@@ -56,8 +56,6 @@ struct Reading {
     /// The focused window in the display space: which window a picture is of.
     var windowFrame: CGRect?
     var focus: [String: String] = [:]
-    /// Whether the focused element takes typing.
-    var focusIsText = false
     /// The app's adapter's reading, if it has one: the event kind and its fields.
     var adapter: (kind: String, fields: [String: Any])?
 }
@@ -74,7 +72,6 @@ enum Adapters {
         }
         if let focused = AX.element(app, kAXFocusedUIElementAttribute) {
             r.focus = AX.describe(focused, valueLimit: 300).mapValues { "\($0)" }
-            r.focusIsText = AX.takesTyping(focused)
         }
         if let kind = kind(of: front) {
             let fields: [String: Any]

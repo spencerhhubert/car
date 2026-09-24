@@ -26,6 +26,10 @@ targets:
         # owl, or owl-dev for the development copy (build.sh sets PRODUCT_NAME).
         CFBundleDisplayName: $(PRODUCT_NAME)
         NSHumanReadableCopyright: ""
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Where the installed owl looks for newer releases of itself.
+        OwlReleases: spencerhhubert/owl
         NSMicrophoneUsageDescription: "owl records your voice for as long as a session you start with ⌘⇧R runs."
         # Finder's selection and a browser's front tab are read with Apple
         # events when the accessibility tree does not carry them.
@@ -48,6 +52,8 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         SWIFT_VERSION: "5"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "0.1"
+        # The version is the release tag's (tools/release.sh passes it);
+        # a dev build says which commit it is.
+        MARKETING_VERSION: "0.0.0"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities

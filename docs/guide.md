@@ -173,39 +173,42 @@ reading is sometimes wrong about what a window is showing. owl's own pill and
 drawing layer are never in a picture; the drawings are drawn in by owl, with
 their numbers.
 
-## Cost
+## Cost and the key
 
 Every call to OpenRouter is in the catalog with what it cost. The menu shows
 today and the last 30 days, with a breakdown by span and by model; `owl usage`
-prints the same. The key is set from the menu (*OpenRouter key*), kept in
-`~/Library/Application Support/owl/openrouter.key` readable by you only, or
-comes from `OPENROUTER_API_KEY`. Without one, sessions are still recorded and
-timed, and the words are the on-device recognizer's.
+prints the same. No key ships with owl: with a remote model chosen, the first
+session asks for one (the menu's *OpenRouter key* changes it). It is kept in
+`~/Library/Application Support/owl/openrouter.key`, readable by you only, or
+comes from `OPENROUTER_API_KEY`. With *Remote model → none*, no key is needed
+and the words are the local model's.
 
-## Install
+## Install and updates
 
-Needs macOS 26 (the on-device recognizer), Xcode, and `xcodegen`
-(`brew install xcodegen`). `ffmpeg` is optional: with it the sound is sent to
-the text model as a small mp3, without it as the AAC chunk it was recorded as.
+Download `owl-X.Y.Z.zip` from the repository's
+[releases](https://github.com/spencerhhubert/owl/releases), unzip it and move
+`owl.app` to Applications. It is signed with Developer ID and notarized, so it
+opens like any app. At its first launch it links the `owl` command into
+`~/.local/bin`. Then, from its menu → Permissions: **Accessibility** (⌥ ⌥ and
+what is focused), **Microphone**, **Screen Recording** (pictures, and fading
+drawings when the screen changes), and **Automation** for Finder and each
+browser (their selection and tabs). Each is a one-time system prompt.
 
-```
-./build.sh release
-```
+owl keeps itself up to date. A few times a day it asks GitHub for the latest
+release; a newer one is downloaded and checked (its published checksum, a
+valid signature, the same signing team as the owl running), and the top of
+the menu offers it. It goes in only while nothing is recording or
+transcribing, and owl restarts into it. The version is at the top of the menu
+and in `owl version`.
 
-runs OwlKit's tests, builds, signs with the first Apple Development identity
-in the keychain (ad hoc without one), installs `/Applications/owl.app`, links
-the `owl` command into `~/.local/bin`, and launches it. It refuses while owl
-is recording or transcribing, and otherwise quits the running copy properly
-first. Plain `./build.sh` builds the development copy instead,
-`/Applications/owl-dev.app` and the `owl-dev` command, which runs beside the
-real one with its own catalog, sessions, settings, log and permissions, and
-its keys off until turned on from its menu (only one app can own ⌘⇧R), so owl
-can be worked on while it is in use.
-
-Then, from the owl menu → Permissions: **Accessibility** (⌥ ⌥ and what is
-focused), **Microphone**, **Screen Recording** (pictures, and fading drawings
-when the screen changes), and **Automation** for Finder and each browser
-(their selection and tabs). Each is a one-time system prompt.
+**Building it** needs macOS 26, Xcode and `xcodegen` (`brew install
+xcodegen`); `ffmpeg` is optional (with it the voice is sent as a small mp3).
+`./build.sh` runs OwlKit's tests and builds the development copy,
+`/Applications/owl-dev.app` and `owl-dev`, which runs beside the real one with
+its own catalog, sessions, settings, log and permissions, and its keys off
+until turned on from its menu (only one app can own ⌘⇧R). `tools/release.sh
+X.Y.Z` cuts a release: tests, a Developer ID signature, notarization, the tag,
+and the zip and its checksum on the releases page.
 
 ## The command
 
@@ -221,7 +224,7 @@ owl pointer <id|last>                          the line that hands over a whole 
 owl transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
                                                transcribe what is left (or failed, or all of it again)
 owl bench <id|last> [--chunk N] --model M      a model's clock against the on-device one
-owl models | config [remoteModel|localModel|keys value] | render <id|last> | guide
+owl models | config [remoteModel|localModel|keys value] | render <id|last> | guide | version
 ```
 
 A moment `M` is `start`, `end`, `m3` (marker 3), `-20m` or `-90s` (before

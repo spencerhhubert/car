@@ -18,15 +18,11 @@ import OwlKit
 //   owl pointer <id|last>  the line that hands a whole session to an agent
 //   owl transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
 //   owl bench <id|last> [--chunk N] [--model M]
-//   owl models | config [key value] | render <id|last> | guide
+//   owl models | config [key value] | render <id|last> | guide | version
 //
 // A moment M is start, end, m3 (marker 3), -20m / -90s (before the end), or a
 // time on the session clock (12:30, 1:02:03).
 enum CLI {
-    static let commands: Set<String> = ["marker", "session", "events", "words", "sessions", "status", "usage", "pointer",
-                                        "transcribe", "bench", "models", "config", "render", "guide",
-                                        "help", "--help", "-h"]
-
     static func run(_ args: [String]) async -> Int32 {
         guard let cmd = args.first else { return usage() }
         let rest = Array(args.dropFirst())
@@ -144,13 +140,18 @@ enum CLI {
                 print("keys        \(c.keys)")
                 print("key         \(Config.openRouterKey == nil ? "missing" : "present")")
                 print("sessions    \(Config.sessionsDir.path)")
+            case "version":
+                print("\(Config.name) \(Config.bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
             case "guide":
                 guard let url = Config.bundle.url(forResource: "guide", withExtension: "md"),
                       let text = try? String(contentsOf: url, encoding: .utf8)
                 else { throw Failure("this copy of \(Config.name) was built without its guide") }
                 print(text)
-            default:
+            case "help", "--help", "-h":
                 return usage()
+            default:
+                _ = usage()
+                return 2
             }
         } catch {
             say(error.localizedDescription)
@@ -251,7 +252,7 @@ enum CLI {
           \(owl) pointer <id|last>
           \(owl) transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
           \(owl) bench <id|last> [--chunk N] [--model M]
-          \(owl) models | config [remoteModel|localModel|keys VALUE] | render <id|last> | guide
+          \(owl) models | config [remoteModel|localModel|keys VALUE] | render <id|last> | guide | version
 
         M: start, end, m3 (marker 3), -20m (before the end), 12:30 (session clock).
         ⌘⇧R starts and stops a session; ⌥ ⌥ sets a marker. `\(owl) guide` for the rest.

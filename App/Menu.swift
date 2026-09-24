@@ -8,6 +8,7 @@ extension App {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         config = Config.load()
+        addVersion(to: menu)
         if let r = recording {
             menu.addItem(item("Stop session  ⌘⇧R  (\(Render.clock(r.session.now).dropLast(4)))", #selector(menuStop)))
             menu.addItem(item("Set marker  ⌥ ⌥", #selector(menuMarker)))
@@ -171,26 +172,57 @@ extension App {
             } catch { flash(.said(error.localizedDescription, ok: false)) }
         }
     }
-    /// Paste a new key. It is kept in the key file, readable by this user
-    /// only, and never shown.
-    @objc private func setKey() {
+    @objc private func setKey() { _ = askForKey(because: nil) }
+
+    /// Ask for the OpenRouter key and keep it: in the key file, readable by
+    /// this user only, never shown. Whether one was saved.
+    func askForKey(because why: String?) -> Bool {
         let ask = NSAlert()
         ask.messageText = "OpenRouter key"
-        ask.informativeText = "Paste the key owl uses for words. It is kept in \(Config.root.path)/openrouter.key, readable by you only."
+        ask.informativeText = (why.map { $0 + "\n\n" } ?? "")
+            + "Paste a key from openrouter.ai/keys. It is kept in \(Config.root.path)/openrouter.key, readable by you only."
         let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
         ask.accessoryView = field
         ask.addButton(withTitle: "Save")
         ask.addButton(withTitle: "Cancel")
         NSApp.activate()
         ask.window.initialFirstResponder = field
-        guard ask.runModal() == .alertFirstButtonReturn else { return }
+        guard ask.runModal() == .alertFirstButtonReturn else { return false }
         do {
             try Config.saveKey(field.stringValue)
             flash(.said("key saved", ok: true))
+            return true
         } catch {
             flash(.said(error.localizedDescription, ok: false))
+            return false
         }
     }
+
+    /// The version, and the update when there is one.
+    private func addVersion(to menu: NSMenu) {
+        guard Updater.enabled else {
+            menu.addItem(disabled("\(Config.name) \(Updater.version)"))
+            menu.addItem(.separator())
+            return
+        }
+        switch updater.state {
+        case .ready(let v):
+            menu.addItem(item(updater.installWhenIdle ? "Updating to \(v) when nothing is recording…"
+                                                      : "Update to owl \(v) (restarts owl)", #selector(update)))
+        case .downloading(let v):
+            menu.addItem(disabled("Downloading owl \(v)…"))
+        case .checking:
+            menu.addItem(disabled("owl \(Updater.version) · checking for updates…"))
+        case .failed(let why):
+            menu.addItem(item("owl \(Updater.version) · update check failed: \(why.prefix(60)) — try again", #selector(checkUpdates)))
+        case .current, .idle:
+            menu.addItem(item("owl \(Updater.version) · check for updates", #selector(checkUpdates)))
+        }
+        menu.addItem(.separator())
+    }
+
+    @objc private func update() { updater.install() }
+    @objc private func checkUpdates() { Task { await updater.check() } }
     @objc private func toggleKeys() {
         config.keys.toggle()
         config.save()

@@ -50,10 +50,12 @@ The person uses the real owl while you work. **Never stop, restart or replace
   ⌘⇧R; turn them on from its menu, or start and stop sessions from the menu.
   It reads the OpenRouter key from the real copy's folder when it has none.
   `build.sh` only ever quits and replaces owl-dev.
-- `./build.sh release` builds and installs the real owl. It refuses while owl
-  is recording or transcribing (`owl status`), otherwise quits it (SIGTERM is
-  a proper quit: a session that has just started is closed, not cut off) and
-  swaps in the new build. Run it only when the person asks.
+- `tools/release.sh X.Y.Z` cuts a release: OwlKit's tests, a Developer ID
+  signature, notarization, the `vX.Y.Z` tag, and the zip and its checksum on
+  the GitHub releases page. Every installed owl finds it and offers it from
+  its menu, and puts it in only while it is idle (App/Update/Updater.swift).
+  Releasing is publishing to the world: only when the person asks. Never
+  change the Developer ID identity; the permissions are keyed to it.
 - The dev copy needs its own grants (Accessibility, Microphone, Screen
   Recording, Automation) before it can record. Only the person can give them,
   from its menu → Permissions.
@@ -112,8 +114,9 @@ OwlKit/                 a Swift package: everything that is not the Mac's screen
       Fading.swift          when a mark fades: its time, or what is under it changing
   Tests/OwlKitTests/
 App/                    the menu bar app and the `owl` command, one binary (main.swift decides)
-  App.swift               sessions: ⌘⇧R, markers, finishing, the pill; Menu.swift the menu
+  App.swift               sessions: ⌘⇧R, markers, finishing, the pill, the key; Menu.swift the menu
   CLI.swift               the command
+  Update/Updater.swift    new releases: check, download, verify, put in place when idle
   Capture/                the Mac's side
     Recording.swift         the session being recorded: microphone, watcher, drawing, transcriber
     Mic.swift               the microphone as chunks cut at pauses; reopens after sleep or a device change
@@ -129,7 +132,8 @@ App/                    the menu bar app and the `owl` command, one binary (main
 skill/SKILL.md          how an agent reads a session and acts on it
 docs/                   guide.md (how owl works; `owl guide` prints it), handoff.md, media/ (Git LFS)
 tools/                  make-icon; the live test (drive.swift, drive.sh, live-test.sh, live-test.txt)
-project.yml, build.sh   xcodegen + xcodebuild (OwlKit as a local package), tests, sign, install (dev or release)
+project.yml, build.sh   xcodegen + xcodebuild (OwlKit as a local package), tests, sign, install owl-dev
+tools/release.sh        a release: sign with Developer ID, notarize, tag, publish on GitHub
 ```
 
 ## Testing without a person

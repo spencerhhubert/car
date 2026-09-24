@@ -48,3 +48,13 @@ import Testing
         #expect(Moment.parse("soon", in: "none", end: 0) == nil)
     }
 }
+
+@Suite struct VersionTests {
+    @Test func versionsCompareNumberByNumber() {
+        #expect(Versions.newer("0.10.0", than: "0.9.3"))
+        #expect(Versions.newer("v1.0.0", than: "0.99.99"))
+        #expect(!Versions.newer("0.2.0", than: "0.2.0"))
+        #expect(!Versions.newer("0.2", than: "0.2.0"))
+        #expect(Versions.newer("0.2.1", than: "0.2"))
+    }
+}

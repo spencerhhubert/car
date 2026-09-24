@@ -20,9 +20,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let drawing = Drawing()
     lazy var keys = Keys(onToggle: { [weak self] in self?.toggle() }, onMarker: { [weak self] in self?.marker() })
     lazy var pill = Pill(drawing: drawing)
+    lazy var updater = Updater(isBusy: { [weak self] in self.map { $0.recording != nil || $0.starting || !$0.finishing.isEmpty } ?? false })
     private(set) var recording: Recording?
     /// A start is waiting on the microphone.
-    private var starting = false
+    private(set) var starting = false
     /// Sessions finishing their last chunks, oldest first.
     private(set) var finishing: [String] = []
     private var outcome: (phase: Pill.Phase, until: Date)?
@@ -50,9 +51,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         term.setEventHandler { NSApp.terminate(nil) }
         term.resume()
         terminate = term
-        Log.line("\(Config.name) up (accessibility \(Keys.trusted), mic \(Mic.permissionGranted), " +
+        Log.line("\(Config.name) \(Updater.version) up (accessibility \(Keys.trusted), mic \(Mic.permissionGranted), " +
                  "screen \(Screenshot.hasPermission))")
+        linkCommand()
         finishOrphans()
+        updater.start()
     }
 
     func applicationWillTerminate(_ note: Notification) {
@@ -71,6 +74,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func start() {
         guard recording == nil, !starting else { return }
+        // No key ships with owl. With a remote model chosen, a session needs
+        // one; with none, the local model's words are enough.
+        if !config.remoteModel.isEmpty, Config.openRouterKey == nil {
+            guard askForKey(because: "owl sends the voice it hears to \(config.remoteModel) for its words, and that needs an OpenRouter key.") else {
+                flash(.said("no OpenRouter key: set one, or Remote model → none", ok: false))
+                return
+            }
+        }
         starting = true
         Task { @MainActor in
             defer { starting = false }
@@ -156,6 +167,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             finishing.removeAll { $0 == id }
             flash(o.state == .done ? .said("\(o.words) words", ok: true)
                                    : .said(o.error ?? "some chunks failed", ok: false))
+            updater.installIfIdle()
         }
     }
 
@@ -194,6 +206,22 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             outcome = nil
             pill.hide()
+        }
+    }
+
+    /// `owl` (or `owl-dev`) on the command line: a link in ~/.local/bin to
+    /// this app's binary, made or mended at launch.
+    private func linkCommand() {
+        let bin = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".local/bin")
+        let link = bin.appending(path: Config.name)
+        guard let target = Config.bundle.executableURL?.path else { return }
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) == target { return }
+        do {
+            try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: link)
+            try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: target)
+        } catch {
+            Log.line("could not link \(link.path): \(error.localizedDescription)")
         }
     }
 

@@ -1,9 +1,10 @@
 # AGENTS.md
 
 owl: a Mac menu bar app that records a person's voice and what they do on the
-computer as one timeline. Read `README.md` first, then
-`agent-notes/handoff.md` (where the work stands), then `agent-notes.local/`
-if it exists (facts about this machine, never tracked).
+computer as one timeline, for hours at a time, and hands stretches of it to AI
+agents at markers. Read `README.md` first, then `docs/guide.md` (how it
+works), then `docs/handoff.md` (where the work stands), then
+`agent-notes.local/` if it exists (facts about this machine, never tracked).
 
 ## How this program is kept
 
@@ -61,8 +62,9 @@ The person uses the real owl while you work. **Never stop, restart or replace
 
 - **`skill/SKILL.md` is how every agent learns to read a session**, and
   other places only point at it. Any change to what a session holds or how
-  it reads (a new event, a new file, a changed line) updates it in the same
-  change. Keep it short: what owl is, how deep to go, what each line means.
+  it reads (a new event, a new command, a changed line) updates it, and
+  `docs/guide.md`, in the same change. Keep the skill short: what owl is, how
+  deep to go, what each line means.
 
 - **Write every tracked file as if the repo were public.** No machine names,
   addresses, account names, paths on a server, keys, or anything about the
@@ -122,6 +124,7 @@ App/                    the menu bar app and the `owl` command, one binary (main
     ScreenChange.swift      small, slow captures of the screen under the marks
     Pill.swift              the pill: a dot while recording, the toolbar on hover
 skill/SKILL.md          how an agent reads a session and acts on it
+docs/                   guide.md (how owl works; `owl guide` prints it), handoff.md, media/ (Git LFS)
 tools/                  make-icon; the live test (drive.swift, drive.sh, live-test.sh, live-test.txt)
 project.yml, build.sh   xcodegen + xcodebuild (OwlKit as a local package), tests, sign, install (dev or release)
 ```

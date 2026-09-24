@@ -1,11 +1,13 @@
 # owl 🦉
 
 A Mac menu bar app for talking to an AI agent about what is on your screen.
-Start a session and talk while you work, circling or pointing at things as
-you go. owl records it as one timeline: every word with the moment it was
-said, next to the app, page, click and selection on screen at that moment,
-with pictures. When you stop, the clipboard gets one line. Paste it into an
-agent and it reads the whole session.
+Start a session in the morning and talk while you work, circling or pointing
+at things as you go. owl records it as one timeline: every word with the
+moment it was said, next to the app, page, click and selection on screen at
+that moment, with pictures. Whenever you want an agent to act on what you
+just said, tap ⌥ twice: the clipboard gets one line naming that marker. Paste
+it into an agent and it reads what you said up to it, reaching further back
+as the task needs.
 
 **Why:** feedback and ideas come fastest out loud, while pointing at the
 thing. A typed message keeps a fraction of that. A session keeps all of it:

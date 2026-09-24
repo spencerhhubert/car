@@ -145,9 +145,9 @@ enum CLI {
                 print("key         \(Config.openRouterKey == nil ? "missing" : "present")")
                 print("sessions    \(Config.sessionsDir.path)")
             case "guide":
-                guard let url = Config.bundle.url(forResource: "README", withExtension: "md"),
+                guard let url = Config.bundle.url(forResource: "guide", withExtension: "md"),
                       let text = try? String(contentsOf: url, encoding: .utf8)
-                else { throw Failure("this copy of \(Config.name) was built without its README") }
+                else { throw Failure("this copy of \(Config.name) was built without its guide") }
                 print(text)
             default:
                 return usage()

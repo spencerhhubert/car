@@ -3,20 +3,37 @@
 Everything about using owl and what it records, for a person or an agent.
 The [README](../README.md) is the short version.
 
-## Starting and stopping
+## A session
 
-Hold ⌥ and talk. Let go to stop, or keep holding past 1.5 s and it latches:
-you can let go and the session runs until you press ⌥ again. A double-click
-inside a text field also starts one. A pill at the bottom of the screen shows
-it is recording, with the level, and carries the drawing tools, a stop button
-and an X that throws the session away.
+A session is meant to run for hours: start it when you sit down, stop it when
+you are done. **⌘⇧R** starts it and **⌘⇧R** stops it; nothing else does.
+While it runs, a dot at the bottom of the screen (🦉 ●) says so, and opens
+into the toolbar while the pointer is on it: the time and the level, the
+drawing tools, and the bin. The menu has *Stop session*, *Set marker* and
+*Discard session…* too.
 
-Nothing plays, nothing is uploaded except the audio to the transcription
-model you chose.
+Nothing plays, and nothing is uploaded except the sound to the transcription
+model you chose, a chunk at a time.
+
+## Markers: handing it to an agent
+
+Tap **⌥ twice** whenever you want an agent to act on what you have been
+saying. owl sets a marker at that moment and puts one line on the clipboard:
+
+```
+owl marker 3 set at 12:31:05 pm in session 20260924-122534
+```
+
+Paste it into an agent that knows owl (its skill is
+[`skill/SKILL.md`](../skill/SKILL.md)). It runs `owl marker 20260924-122534 3`
+and reads what you said since the marker before, reaching further back
+(`--from -30m`, `--from start`) when your words point there ("like I said
+earlier"). The marker also cuts the sound there, so the words up to it are
+transcribed straight away; `owl marker` waits the few seconds that takes.
 
 ## Drawing while you talk
 
-The pill has a pen, an arrow, a circle and a rectangle, and one row of inks
+The toolbar has a pen, an arrow, a circle and a rectangle, and one row of inks
 (red, yellow, green, blue, purple) shared by all four. Pick a tool and drag
 anywhere on any screen. A shape is drawn once and the pointer goes back to your
 apps; the pen stays in hand for the next stroke. A click without a drag, Esc,
@@ -38,63 +55,82 @@ is up, and gets a picture of the whole screen the moment it is finished. So
 ```
 [00:12.050–00:15.900] “so this part here {red circle 1} is the one that's wrong”
 [00:13.200] drew red circle 1 around button “Save” in Safari “Settings”
-[00:13.260] picture shots/00013260.jpg (red circle 1)
+[00:13.260] picture …/sessions/20260924-122534/shots/00013260.jpg (red circle 1)
 [00:16.410] red circle 1 faded as the screen under it changed
 ```
 
-## When a session ends
+## Where it all is
 
-It is transcribed in the background, and the next session can start at once.
-The clipboard does not get the words. It gets one line, `new owl session
-20260922-104412`, for pasting into an agent that knows owl: it reads the
-session with `owl session <id>`, which waits if the words are not in yet, and
-gets all of it: what you said, what was on the screen while you said it, what
-you drew, and the pictures. The menu's *Copy last session for an agent* puts
-the line back, and `owl pointer <id>` prints it.
-
-A session is `recording`, then `transcribing`, then `done` or `failed`
-(`meta.json` says which). Whoever is recording or transcribing one holds its
-lock, so a session a crash or a quit left unfinished is found and finished
-by the app at its next launch, or by `owl session` when asked for it.
-
-## What a session looks like
+The catalog, `owl.sqlite`, holds everything about every session: the
+session, its chunks of sound, every word, every event, every marker, what
+transcribing it cost, and where each of its files is. The files are only the
+heavy data:
 
 ```
-sessions/20260922-104412/
-  audio.m4a        the microphone, 16 kHz mono AAC
-  events.jsonl     what happened, one event per line
+sessions/20260924-122534/
+  audio/0001.m4a   the microphone, a chunk each, 16 kHz mono AAC
   shots/*.jpg      the focused window when something changed; the whole screen for a drawing
-  transcript.txt   the words
-  words.json       every word: start and end in ms on the session clock, and how it was timed
-  session.md       the timeline, words and events interleaved
-  meta.json        when, how long, its state, which models, cost
+  session.md       the timeline, written out when the session finishes
   .lock            held by whoever is recording or transcribing it
 ```
 
-`session.md` is meant to be read by a person or an agent:
+Each file sits in a store (to begin with, this Mac's sessions folder) at a
+path the catalog records, so old pictures can move to another drive by
+copying them and changing their rows. The timeline names each picture where
+it is now.
 
-```
-[00:02.100] app → Finder
-[00:02.350] window Finder “Downloads” (file:///Users/me/Downloads/)
-[00:02.600] picture shots/00002600.jpg (window)
-[00:03.120–00:05.870] “okay so these two files here”
-[00:04.200] click left Finder row “IMG_1234.MOV”
-[00:04.400] finder in /Users/me/Downloads/ selected: /Users/me/Downloads/IMG_1234.MOV, /Users/me/Downloads/IMG_1235.MOV
-```
+Times are milliseconds on one clock for words and events alike, a clock that
+keeps counting while the Mac sleeps, so "the word *here*" and "the click"
+compare directly however long the session runs. Places on the screen (a
+click, a mark) are points from the top-left corner of the main display, the
+space the accessibility API and the window server use.
 
-An agent reading sessions should start from `skill/SKILL.md`. Everything an
-agent might want beyond the timeline is a file beside it: `words.json`
-for the exact moment of a word, `events.jsonl` for the full detail of an
-event (the whole accessibility description of what was clicked), `shots/` for
-what the screen showed. The timeline names each picture so a reader can open
-the one it needs.
+A session is `recording`, then `transcribing` (its last chunks, after it
+stops), then `done` or `failed`. Whoever is recording or transcribing one
+holds its lock, so a session a crash or a quit left unfinished is found and
+finished by the app at its next launch, or by `owl session` or `owl marker`
+when asked for it. A crash loses at most the chunk being written.
 
-Times are milliseconds on one monotonic clock for words and events alike, so
-"the word *here*" and "the click" are directly comparable. Each word also
-carries its position in the audio file (`s`, `e`, seconds) for pulling that
-moment of sound. Places on the screen (a click, a mark) are in points from the
-top-left corner of the main display, the space the accessibility API and the
-window server use.
+## The sound, a chunk at a time
+
+The microphone is recorded as chunks of about three minutes, each cut at the
+first pause after that (four minutes at most), so each is transcribed while
+the next records. A marker cuts one on the spot. Each chunk is stamped on the
+session clock from the moment its first sample arrived.
+
+A chunk the on-device recognizer hears no words in is silent: it costs
+nothing and nothing is sent. The microphone reopens by itself when it changes
+or disappears (headphones connecting) and when the Mac wakes from sleep.
+
+## How the words get their times
+
+Two models, two jobs, per chunk:
+
+1. **The times** come from Apple's on-device recognizer, which stamps every
+   run of its own transcript with the audio range it was heard in. Its words
+   are worse; its clock is real, because it comes from the sound rather than
+   from a model's sense of where in a file a sentence sits. It runs first,
+   and a chunk it hears nothing in goes no further.
+2. **The words** come from a cloud model on OpenRouter (default
+   `google/gemini-3-flash-preview`), asked for a verbatim transcript with the
+   fillers left in. Pick any audio-capable model from the menu or with
+   `owl config textModel <id>`; `owl models` lists them.
+
+The two are lined up by a global word alignment (`Align.swift`): each word of
+the text model's transcript that matches a timed word takes its time; a word
+with no partner is placed between its matched neighbours by its length. Then
+every word's start is moved to the onset actually heard in the sound, inside a
+short window around the recognizer's boundary (`Refine.swift`), which is what
+gets it within a frame. `owl words` says how each word was timed: `matched`,
+`interpolated`, with `+onset` when the start was snapped.
+
+**Judging a time source.** `owl bench <id> --chunk N --model <id>` asks a
+model for its own timestamped segments, lays the same words onto both and
+reports the per-word difference in start time. On a 14 s clip,
+`google/gemini-3-flash-preview` placed words a median 717 ms from the
+on-device times, 4% within one frame, which is why it does not keep time by
+default. `owl config timeSource openrouter:<model>` switches to a model's
+clock if one ever does better.
 
 ## What gets recorded
 
@@ -117,87 +153,67 @@ All of this is asked of other apps off the main thread, each question with a
 short limit, so a hung app costs a reading and never the pill or the session.
 
 Pictures: a JPEG of the focused window, at most ~1.5 MP, when the front app
-or window changes, after a click or a scroll, never more than one every 0.7 s
-unless the moment calls for one (a click, a drawing), and only when it differs
-from the last one (a difference hash). A drawing gets a picture of its whole
-screen. What was recorded as text is always also recorded as a picture,
-because the text reading is sometimes wrong about what a window is showing.
-owl's own pill and drawing layer are never in a picture; the drawings are
-drawn in by owl, with their numbers.
+or window changes, after a click or a scroll when the screen changed, never
+more than one every 0.7 s, and only when it differs from the last one (a
+difference hash). A drawing gets a picture of its whole screen regardless.
+What was recorded as text is also recorded as a picture, because the text
+reading is sometimes wrong about what a window is showing. owl's own pill and
+drawing layer are never in a picture; the drawings are drawn in by owl, with
+their numbers.
 
-## How the words get their times
+## Cost
 
-Two models, two jobs:
-
-1. **The words** come from a cloud model on OpenRouter (default
-   `google/gemini-3-flash-preview`), asked for a verbatim transcript with the
-   fillers left in. Pick any audio-capable model from the menu or with
-   `owl config textModel <id>`; `owl models` lists them.
-2. **The times** come from Apple's on-device recognizer, which stamps every
-   run of its own transcript with the audio range it was heard in. Its words
-   are worse; its clock is real, because it comes from the sound rather than
-   from a model's sense of where in a file a sentence sits.
-
-The two are lined up by a global word alignment (`Align.swift`): each
-word of the text model's transcript that matches a timed word takes its
-time; a word with no partner is placed between its matched neighbours by its
-length. Then every word's start is moved to the onset actually heard in the
-sound, inside a short window around the recognizer's boundary
-(`Refine.swift`), which is what gets it within a frame.
-
-`words.json` says how each word was timed: `matched`, `interpolated`, with
-`+onset` when the start was snapped.
-
-**Judging a time source.** `owl bench <id> --model <id>` asks a model for
-its own timestamped segments, lays the same words onto both and reports the
-per-word difference in start time. On a 14 s clip, `google/gemini-3-flash-preview`
-placed words a median 717 ms from the on-device times, 4% within one frame,
-which is why it does not keep time by default. `owl config timeSource
-openrouter:<model>` switches to a model's clock if one ever does better.
+Every call to OpenRouter is in the catalog with what it cost. The menu shows
+today and the last 30 days, with a breakdown by span and by model; `owl usage`
+prints the same. The key is set from the menu (*OpenRouter key*), kept in
+`~/Library/Application Support/owl/openrouter.key` readable by you only, or
+comes from `OPENROUTER_API_KEY`. Without one, sessions are still recorded and
+timed, and the words are the on-device recognizer's.
 
 ## Install
 
 Needs macOS 26 (the on-device recognizer), Xcode, and `xcodegen`
-(`brew install xcodegen`). `ffmpeg` is optional: with it the audio is sent
-to the text model as a small mp3, without it as the AAC file it was recorded
-as.
+(`brew install xcodegen`). `ffmpeg` is optional: with it the sound is sent to
+the text model as a small mp3, without it as the AAC chunk it was recorded as.
 
 ```
 ./build.sh release
 ```
 
-builds, signs with the first Apple Development identity in the keychain
-(ad hoc without one), installs `/Applications/owl.app`, links the `owl`
-command into `~/.local/bin`, and launches it. It refuses while owl is
-recording or transcribing, and otherwise quits the running copy properly
+runs OwlKit's tests, builds, signs with the first Apple Development identity
+in the keychain (ad hoc without one), installs `/Applications/owl.app`, links
+the `owl` command into `~/.local/bin`, and launches it. It refuses while owl
+is recording or transcribing, and otherwise quits the running copy properly
 first. Plain `./build.sh` builds the development copy instead,
 `/Applications/owl-dev.app` and the `owl-dev` command, which runs beside the
-real one with its own sessions, settings, log and permissions and the gesture
-off until turned on from its menu, so owl can be worked on while it is in
-use. Then, from the owl menu →
-Permissions: **Accessibility** (to see the gesture and what is focused),
-**Microphone**, **Screen Recording** (pictures), and **Automation** for
-Finder and each browser (their selection and tabs). Each is a one-time
-system prompt.
+real one with its own catalog, sessions, settings, log and permissions, and
+its keys off until turned on from its menu (only one app can own ⌘⇧R), so owl
+can be worked on while it is in use.
 
-The OpenRouter key goes in `~/Library/Application Support/owl/openrouter.key`
-(one line) or `OPENROUTER_API_KEY`. Without one, sessions are still recorded
-and timed; the words are then the on-device recognizer's.
+Then, from the owl menu → Permissions: **Accessibility** (⌥ ⌥ and what is
+focused), **Microphone**, **Screen Recording** (pictures, and fading drawings
+when the screen changes), and **Automation** for Finder and each browser
+(their selection and tabs). Each is a one-time system prompt.
 
 ## The command
 
 ```
-owl sessions                          every session, with its state
-owl session last                      the timeline; waits for a transcription in progress
-owl pointer last                      the line for an agent
-owl guide                             this file
-owl status                            what is being recorded or transcribed now
-owl transcribe last [--text-model M] [--time-source apple|openrouter:M]
-owl bench last --model M              a model's clock against the on-device one
-owl models                            audio-capable models on OpenRouter
-owl config [key value]                textModel, timeSource, doubleClick, enabled
-owl render last                       rewrite session.md from what is on disk
+owl marker [<id|last> [<n|last>]] [--from M]   what was said up to a marker; waits for its words
+owl session <id|last> [--from M] [--to M]      the timeline, whole or a stretch
+owl events <id|last> [--from M] [--to M]       every event, JSON, one a line
+owl words <id|last> [--from M] [--to M]        every word, JSON, one a line
+owl sessions                                   every session
+owl status                                     what is being recorded or transcribed now
+owl usage                                      what transcription has cost
+owl pointer <id|last>                          the line that hands over a whole session
+owl transcribe <id|last> [--again|--all]       transcribe what is left (or failed, or all of it again)
+owl bench <id|last> [--chunk N] --model M      a model's clock against the on-device one
+owl models | config [key value] | render <id|last> | guide
 ```
+
+A moment `M` is `start`, `end`, `m3` (marker 3), `-20m` or `-90s` (before
+the end of the stretch), or a time on the session clock (`12:30`,
+`1:02:03`).
 
 Everything lives under `~/Library/Application Support/owl/`; the log is
 `~/Library/Logs/owl.log`. The development copy's are `owl-dev` in both

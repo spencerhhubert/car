@@ -13,7 +13,7 @@ targets:
     sources:
       - App
       # `owl guide` prints it.
-      - path: README.md
+      - path: docs/guide.md
         buildPhase: resources
     dependencies:
       - package: OwlKit

@@ -2,73 +2,52 @@
 
 ## Where it stands
 
-The first shot recorded real sessions well. The second pass built the program
-out around four asks, each as if it had been there from the start:
+owl records sessions meant to run for hours. ⌘⇧R starts and stops one;
+⌥ ⌥ sets a marker, which cuts the sound there and puts
+`owl marker N set at <time> in session <id>` on the clipboard for an agent,
+which reads it with `owl marker` (skill: `skill/SKILL.md`). The sound is
+recorded in chunks of about three minutes, cut at pauses and transcribed as
+they close. The catalog (`owl.sqlite`) holds every session, chunk, word,
+event, marker, cost, and where each file is. Drawing on the screen, the
+reader queue and the dev copy are as before. The code is split into OwlKit
+(a tested Swift package: store, transcription, timeline, marks) and the app
+(capture, drawing, the menu, the command).
 
-- **Drawing.** Pen, arrow, circle, rectangle and five named inks on the pill;
-  marks numbered, recorded with what they were drawn on, set into the words
-  (`{red circle 1}`), drawn into pictures with their numbers, and a whole-screen
-  picture per mark.
-- **The clipboard gets a note for an agent**, not the words (`Pointer.swift`),
-  the moment a session stops; `owl session` waits for the words.
-- **Sessions overlap.** One recording, any number transcribing. States
-  (`recording`, `transcribing`, `done`, `failed`) and a per-session flock make
-  that safe across processes and crashes: an orphan is finished by the app at
-  launch or by `owl session`.
-- **A dev copy** (`./build.sh` → owl-dev) so owl can be worked on while the
-  real one is in use; `./build.sh release` refuses while it is busy.
+Verified:
+- OwlKit's tests (`swift test --package-path OwlKit`): alignment, onset
+  monotonicity, remarks with drawings and markers, the clock, moments,
+  pointer lines, mark geometry, the fading test, the catalog round trip.
+- End to end without a microphone: a scratch program played the app (three
+  `say -o` chunks, a marker after the second, holding the lock). `owl-dev
+  marker` waited for the second chunk's words and printed only what came
+  before the marker; `owl-dev session` then took over the chunk the "crashed"
+  app left and finished the session; ranges and `owl-dev words` work.
+- The screen-change test against pictures of real pages.
+- owl-dev's older sessions were imported into its catalog.
 
-And the robustness pass: every read of another app (accessibility, Apple
-events, an app's desk command) moved off the main thread onto one serial
-reader queue with timeouts. In a real session the old synchronous AppleScript
-let one reading run inside another, which logged `app → Brave`, `app →
-Onshape Bridge` twice and out of order. Readings no longer overlap, and an
-event keeps the time it happened. Pictures are an actor. The last click's
-picture and the last typing are waited for at the end (up to 2 s). SIGTERM is
-a proper quit. The gesture watches only ⌥ and clicks when idle, so keys and
-scrolls no longer wake owl all day.
+Not verified live yet: the chunked microphone (the first try on a Bluetooth
+headset looped reopening the input, fixed since: a change is looked at half a
+second later and only a stopped engine is reopened, at most once a second),
+⌘⇧R and ⌥ ⌥, the pill's dot and hover, a session across sleep. The person
+runs owl-dev for that; `tools/live-test.txt` still plays the old hold-⌥ flow
+and needs the new keys before gravity can run it.
 
-Verified with the dev copy and synthetic sessions (`say -o`):
-- orphan takeover by `owl-dev session`
-- waiting on a held lock, and a second `transcribe` refused
-- finishing an orphan at launch after a SIGTERM
-- marks inline in the words, and empty focus events dropped
-- `pointer` and `guide`
-- the pill and marks rendered offscreen and looked at
+## Before the first release of this
 
-Not verified: the drawing layer, the Escape tap and the pill's buttons on a
-live screen, and the watcher end to end after the reader rewrite. They need
-the person to run an owl-dev session, which needs owl-dev's own grants first.
-
-## 2026-09-24, after the person tried owl-dev
-
-- Drawings fade: six seconds, then three to fade; half a second once the
-  screen under them changes a lot (`ScreenChange.swift`: a small, slow
-  ScreenCaptureKit stream per display, only while marks are up). The change
-  test is relative to each region's own contrast. On real page pictures a
-  30 pt scroll of a list or toolbar, a 120 pt scroll of anything, and a page
-  going blank count; noise, the pointer and a 6 pt nudge do not. A mark
-  leaves the record (and the pictures) when it starts to fade: a `fade` event.
-- The clipboard line is just `new owl session <id>`; agents learn owl from
-  `skill/SKILL.md`, which a vault skill points at.
-- owl-dev on the person's Mac had the microphone but not Accessibility or
-  Screen Recording in the first try: no Esc, no element names, no pictures,
-  and without Screen Recording marks only fade with time.
+The real owl's sessions are still in the old per-folder files (meta.json,
+events.jsonl, words.json, audio.m4a). They go into its catalog the way
+owl-dev's did: an import that makes each old session one chunk, turns its
+events and pictures into rows, then removes the old files. Back the sessions
+folder up first. The old copy knows nothing of locks, so check its log for a
+session in progress before `./build.sh release`.
 
 ## What is next
 
-- The person runs an owl-dev session: draw each tool, Esc, clear, stop from
-  the pill, start a second session while the first transcribes, paste the
-  note into an agent. Then read `session.md` back.
-- The first `./build.sh release` goes over a copy from before session states
-  and locks. That copy's `owl status` does not exist and it does not handle
-  SIGTERM, so check its log for a session in progress before replacing it.
-- A take cut off by a crash is lost: AAC in .m4a is unreadable without the
-  index written at close. A format that survives a crash (CAF, or PCM
-  rolled into AAC at stop) would make crash recovery keep the sound.
-- A transcript over ~7 minutes should be chunked before it goes to the text
-  model; long clips make chat models loop. Not done.
-- Sessions are one take on one microphone. A device change mid-session ends
-  the sound (the engine stops on device loss) but not the session.
-- The remark grouping in `session.md` (pause > 0.7 s, or sentence end + pause
-  > 0.25 s) is a first guess.
+- Bindings (issue #2): any gesture for any action, set by doing it.
+- Archiving: the catalog already records each file's store; a command that
+  moves old pictures and audio to another drive and updates their rows.
+- Retention of raw audio once it has words.
+- Long sessions and pictures: a picture per window change all day adds up;
+  watch the disk after a few full days.
+- The remark grouping (pause > 0.7 s, or sentence end + pause > 0.25 s) is a
+  first guess.

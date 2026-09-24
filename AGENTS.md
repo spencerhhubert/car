@@ -77,7 +77,8 @@ The person uses the real owl while you work. **Never stop, restart or replace
   numbers back. The person listens, if anyone does.
 - **A session is someone's life.** Sessions live outside the repo under
   Application Support; never copy one into the repo, a test fixture, or a
-  commit. A synthetic clip is the test fixture.
+  commit. A synthetic clip is the test fixture. The one exception is what the
+  person chose to show: the README's session and `docs/media/`.
 - **Never print or commit a credential.** The key is read from a file or the
   environment and never logged. `git diff --cached` before every commit.
 - **The grants** (Accessibility, Microphone, Screen Recording, Automation per

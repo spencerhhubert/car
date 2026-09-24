@@ -57,7 +57,7 @@ Needs macOS 26. Download the latest `owl-X.Y.Z.zip` from
 Applications, open it, and grant its permissions from the 🦉 menu; it asks for
 an OpenRouter key the first time it needs one, and keeps itself up to date.
 How to start a session, mark, draw and stop is in the
-[guide](docs/guide.md). An agent learns to
-read sessions from [`skill/SKILL.md`](skill/SKILL.md).
+[guide](docs/guide.md). An agent learns to read sessions from
+[`skill/SKILL.md`](skill/SKILL.md).
 
 Everything else is in [docs](docs/README.md).

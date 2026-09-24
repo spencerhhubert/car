@@ -72,8 +72,10 @@ final class Keys {
         let id = EventHotKeyID(signature: 0x6F776C21 /* owl! */, id: 1)
         let status = RegisterEventHotKey(UInt32(kVK_ANSI_R), UInt32(cmdKey | shiftKey), id,
                                          GetApplicationEventTarget(), 0, &hotKey)
+        // macOS lets two apps hold the same hot key, and both are told; the
+        // dev copy keeps its keys off by default for that reason.
         if status != noErr {
-            Log.line("⌘⇧R is taken (OSStatus \(status)); start sessions from the menu")
+            Log.line("⌘⇧R could not be registered (OSStatus \(status)); start sessions from the menu")
             hotKey = nil
         }
     }

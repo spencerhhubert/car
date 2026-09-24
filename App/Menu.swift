@@ -202,6 +202,11 @@ extension App {
     private func addVersion(to menu: NSMenu) {
         guard Updater.enabled else {
             menu.addItem(disabled("\(Config.name) \(Updater.version)"))
+            // Both copies can hold ⌘⇧R at once, and one press would start a
+            // session in each, so the dev copy's keys start off; say so here.
+            if Config.isDev, !config.keys {
+                menu.addItem(item("⌘⇧R and ⌥ ⌥ are off in \(Config.name) · turn them on", #selector(toggleKeys)))
+            }
             menu.addItem(.separator())
             return
         }
@@ -223,7 +228,7 @@ extension App {
 
     @objc private func update() { updater.install() }
     @objc private func checkUpdates() { Task { await updater.check() } }
-    @objc private func toggleKeys() {
+    @objc func toggleKeys() {
         config.keys.toggle()
         config.save()
         if config.keys {

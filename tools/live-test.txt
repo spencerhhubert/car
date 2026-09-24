@@ -1,0 +1,67 @@
+# owl's live test, played by OwlDrive (tools/drive.swift) on a Mac no one is
+# using, with owl-dev running there and its gesture on. Two sessions: every
+# drawing tool, each way of putting a tool down, wiping, stopping from the
+# pill, and a second session started while the first is transcribing.
+# Points fit a 1280x800 screen; pill+X,Y are the pill's controls:
+#   pen 164  arrow 193  circle 220  rectangle 247
+#   red 277  yellow 297  green 317  blue 337  purple 357
+#   wipe 386  stop 426  discard 452     (all at y 26)
+
+# a latched session: hold ⌥ past the latch
+option down
+wait 2
+option up
+wait 1.5
+shot 01-recording
+
+# red circle
+click pill+220,26
+wait 0.3
+shot 02-circle-in-hand
+drag 300,220 520,340
+wait 1
+
+# blue arrow: the ink first, then the tool
+click pill+337,26
+click pill+193,26
+drag 760,520 560,360
+wait 1
+
+# green square: ⇧ keeps it square
+click pill+317,26
+click pill+247,26
+shiftdrag 700,150 860,230
+wait 1
+
+# yellow pen: two strokes, then Esc puts it down
+click pill+297,26
+click pill+164,26
+drag 250,500 300,470 350,520 400,480 450,520
+drag 250,560 450,560
+key esc
+wait 0.5
+shot 03-drawn
+
+# a click with a tool in hand and no drag puts it down
+click pill+220,26
+click 900,600
+wait 0.5
+shot 04-put-down-by-click
+
+# wipe the screen
+click pill+386,26
+wait 0.5
+shot 05-wiped
+
+# stop from the pill, and start the next session while the first transcribes
+click pill+426,26
+wait 0.4
+shot 06-transcribing
+option down
+wait 2
+option up
+wait 2
+shot 07-second-recording
+click pill+426,26
+wait 10
+shot 08-after

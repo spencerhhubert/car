@@ -98,6 +98,8 @@ owl/            the app and the `owl` command, one binary (main.swift decides)
   Config.swift     settings, where things live, owl vs owl-dev
   Log.swift        the log; Failure, the one error type
 tools/make-icon.swift   renders the icon
+tools/drive.swift, drive.sh, live-test.sh, live-test.txt
+                        the live test: a driver, its install, its runner, its plan
 project.yml, build.sh   xcodegen + xcodebuild, sign, install (dev or release)
 agent-notes/            what was learned, tracked
 ```
@@ -117,5 +119,13 @@ agent-notes/            what was learned, tracked
   with a `main.swift` of its own that renders `PillView` in an NSHostingView
   that is never put on screen (`cacheDisplay`), and marks onto any image with
   `Screenshot.draw`. Then look at the files.
-- **The watcher and the drawing layer on a live screen** can only be checked
-  by the person running an owl-dev session and reading `session.md` back.
+- **Live, end to end, on a Mac no one is using.** `tools/drive.sh HOST` puts
+  owl-dev and OwlDrive (`tools/drive.swift`, a driver that plays a plan of real
+  mouse and key input and takes screen pictures) on HOST;
+  `tools/live-test.sh HOST` plays `tools/live-test.txt` there (two sessions,
+  every tool, every way of putting one down, wiping, stopping from the pill,
+  a session started while one transcribes) and brings back the pictures and
+  the timelines. HOST needs someone logged in, owl-dev's gesture on, and the
+  two apps' grants, given once by a person (Screen Sharing is enough). Its
+  sessions record that room: delete them after. Never point it at a Mac
+  someone is using.

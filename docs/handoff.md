@@ -48,16 +48,17 @@ holder, and notarizing needs one.) Typing is never named key by key anywhere
 now: a terminal's keys had been logged one by one because a terminal does not
 look like a text field. `tools/live-test.txt` still plays the old hold-⌥ flow.
 
-## Before the real owl gets this build
-
-The real owl's sessions are still in the old per-folder files (meta.json,
-events.jsonl, words.json, audio.m4a). They go into its catalog the way
-owl-dev's did: an import that makes each old session one chunk, turns its
-events and pictures into rows, then removes the old files. Back the sessions
-folder up first. The old copy knows nothing of locks, so check its log for a
-session in progress before replacing it.
+The real owl runs this build as of 2026-09-24 (its old sessions imported
+into its catalog, a backup of the folders taken first); it holds ⌘⇧R and
+⌥ ⌥, and owl-dev's keys are off.
 
 ## What is next
+
+- Quick dictation (asked 2026-09-24): hold ⇧ and tap ⌥ twice, and owl
+  transcribes what was said since the last long silence (more than ~15 s, a
+  setting) and puts those words on the clipboard as fast as it can; the
+  session carries on as it was. For answering a message out loud in the
+  middle of a long session.
 
 - Bindings (issue #2): any gesture for any action, set by doing it.
 - Archiving: the catalog already records each file's store; a command that

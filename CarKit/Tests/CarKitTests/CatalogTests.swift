@@ -11,8 +11,8 @@ import Testing
         let s = try Session(input: "test mic")
         defer { s.remove() }
         s.event("app", ["app": "Safari", "bundle": "com.apple.Safari"], at: 100)
-        s.chunkOpened(1, file: "audio/0001.m4a", start: s.t0 + 0.2)
-        s.chunkClosed(1, file: "audio/0001.m4a", end: s.t0 + 5.2, seconds: 5, peakDb: -12)
+        s.chunkOpened(1, url: s.dir.appending(path: "audio/0001.m4a"), store: "local", start: s.t0 + 0.2)
+        s.chunkClosed(1, url: s.dir.appending(path: "audio/0001.m4a"), end: s.t0 + 5.2, seconds: 5, peakDb: -12)
         let m = try s.marker()
         Session.flush()
 
@@ -31,10 +31,50 @@ import Testing
         #expect(SessionLock.isHeld(s.dir))
     }
 
+    @Test func filesGoToTheRecordingsFolderWhileItIsThere() throws {
+        let drive = FileManager.default.temporaryDirectory.appending(path: "car-drive-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: drive, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: drive) }
+        let s = try Session(input: "test mic", recordings: drive)
+        defer { s.remove() }
+        let moves = Moves()
+        s.onMove = { moves.add($0) }
+
+        // There: the sound goes to the drive, and the catalog finds it there.
+        let there = s.place("audio")
+        #expect(there.store == drive.path && there.dir.path == drive.appending(path: "\(s.id)/audio").path)
+        let url = there.dir.appending(path: "0001.m4a")
+        try Data(count: 10).write(to: url)
+        s.chunkOpened(1, url: url, store: there.store, start: s.t0)
+        Session.flush()
+        let file = try #require(Session.chunks(s.id).first?.file)
+        #expect(Session.path(file: file)?.path == url.path)
+        #expect(Session.folders(s.id).map(\.path).contains(drive.appending(path: s.id).path))
+
+        // Unplugged: this Mac, and never a folder made where the drive was.
+        try FileManager.default.removeItem(at: drive)
+        let here = s.place("shots")
+        #expect(here.store == "local" && here.dir.path == s.dir.appending(path: "shots").path)
+        #expect(!FileManager.default.fileExists(atPath: drive.path))
+
+        // Back: the drive again.
+        try FileManager.default.createDirectory(at: drive, withIntermediateDirectories: true)
+        #expect(s.place("shots").store == drive.path)
+        #expect(moves.all == [true, false, true])
+    }
+
+    @Test func aRecordingsFolderThatIsNotThereIsNeverMade() throws {
+        let drive = FileManager.default.temporaryDirectory.appending(path: "car-absent-\(UUID().uuidString)")
+        let s = try Session(input: "test mic", recordings: drive)
+        defer { s.remove() }
+        #expect(s.place("audio").store == "local")
+        #expect(!FileManager.default.fileExists(atPath: drive.path))
+    }
+
     @Test func removingASessionTakesEverythingWithIt() throws {
         let s = try Session(input: "test mic")
         s.event("key", ["chord": "⌘S"])
-        s.chunkOpened(1, file: "audio/0001.m4a", start: s.t0)
+        s.chunkOpened(1, url: s.dir.appending(path: "audio/0001.m4a"), store: "local", start: s.t0)
         Session.flush()
         s.remove()
         #expect(Session.record(s.id) == nil)
@@ -61,4 +101,12 @@ import Testing
         let t = Usage.total()
         #expect(abs(t.cost - 0.03) < 1e-9 && t.audioSeconds == 90 && t.calls == 2)
     }
+}
+
+/// What a session's `onMove` heard, in order.
+final class Moves: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [Bool] = []
+    func add(_ b: Bool) { lock.withLock { seen.append(b) } }
+    var all: [Bool] { lock.withLock { seen } }
 }

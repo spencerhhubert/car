@@ -33,6 +33,8 @@ final class Mic: @unchecked Sendable {
     struct Chunk: Sendable {
         let n: Int
         let url: URL
+        /// The catalog's store it went to (Session.place).
+        let store: String
         let rate: Double
         /// On `Clock`: the first sample, and the end of the last.
         let start: Double
@@ -40,7 +42,6 @@ final class Mic: @unchecked Sendable {
         var frames: Int64 = 0
         var peak: Float = -160
         var seconds: Double { Double(frames) / rate }
-        var file: String { "audio/\(url.lastPathComponent)" }
     }
 
     /// A chunk is cut at the first pause after `length` seconds, and at
@@ -68,11 +69,16 @@ final class Mic: @unchecked Sendable {
     private var cutPending = false
     private var _level: Float = -160
     private var writeFailed = false
+    /// After a chunk could not be written, when to try a new one (system
+    /// uptime): a drive unplugged mid-chunk is a new chunk wherever the
+    /// session says to write next, not a chunk a buffer.
+    private var retryAt: TimeInterval = 0
     /// When the last buffer arrived (system uptime).
     private var lastSound: TimeInterval = 0
 
     // On `control`.
-    private var dir: URL?
+    /// Where the next chunk goes.
+    private var place: (@Sendable () -> Session.Place)?
     private var order: [Config.Microphone] = []
     private var quality = SoundQuality.low
     /// Listed microphones that sent nothing, passed over until they are
@@ -119,12 +125,13 @@ final class Mic: @unchecked Sendable {
             ?? AudioInputs.systemDefault().flatMap { id in devices.first { $0.id == id }?.name } ?? "system default"
     }
 
-    /// Start recording into `dir`, from the first microphone of `order`
-    /// that is there, at `quality`.
-    func start(into dir: URL, order: [Config.Microphone], quality: SoundQuality) async throws {
+    /// Start recording, each chunk to wherever `place` says when it opens,
+    /// from the first microphone of `order` that is there, at `quality`.
+    func start(into place: @escaping @Sendable () -> Session.Place, order: [Config.Microphone],
+               quality: SoundQuality) async throws {
         try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
             control.async {
-                self.dir = dir
+                self.place = place
                 self.order = order
                 self.quality = quality
                 self.stalls = 0
@@ -168,7 +175,7 @@ final class Mic: @unchecked Sendable {
     // MARK: - the engine, on `control`
 
     private func open() throws {
-        guard let dir else { return }
+        guard let place else { return }
         let engine = AVAudioEngine()
         let input = engine.inputNode
         // Set before the format is read: choosing the device changes the
@@ -193,7 +200,7 @@ final class Mic: @unchecked Sendable {
             lastSound = ProcessInfo.processInfo.systemUptime
         }
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, when in
-            self?.consume(buffer, when, converter, target, quality, into: dir)
+            self?.consume(buffer, when, converter, target, quality, into: place)
         }
         engine.prepare()
         do {
@@ -357,7 +364,7 @@ final class Mic: @unchecked Sendable {
     // MARK: - the sound, on the tap's thread
 
     private func consume(_ buffer: AVAudioPCMBuffer, _ when: AVAudioTime, _ converter: AVAudioConverter,
-                         _ target: AVAudioFormat, _ quality: SoundQuality, into dir: URL) {
+                         _ target: AVAudioFormat, _ quality: SoundQuality, into place: () -> Session.Place) {
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * target.sampleRate / buffer.format.sampleRate) + 128
         guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
         var handed = false
@@ -382,7 +389,9 @@ final class Mic: @unchecked Sendable {
             lastSound = ProcessInfo.processInfo.systemUptime
             guard accepting else { return }
             if current == nil {
-                let c = Chunk(n: next, url: dir.appending(path: String(format: "audio/%04d.m4a", next)),
+                guard ProcessInfo.processInfo.systemUptime >= retryAt else { return }
+                let p = place()
+                let c = Chunk(n: next, url: p.dir.appending(path: String(format: "%04d.m4a", next)), store: p.store,
                               rate: target.sampleRate, start: arrived, end: arrived)
                 do {
                     let file = try AVAudioFile(forWriting: c.url, settings: quality.fileSettings,
@@ -392,8 +401,9 @@ final class Mic: @unchecked Sendable {
                     quiet = 0
                     opened = c
                 } catch {
-                    if !writeFailed { Log.line("cannot write \(c.url.lastPathComponent): \(error.localizedDescription)") }
+                    if !writeFailed { Log.line("cannot write \(c.url.path): \(error.localizedDescription)") }
                     writeFailed = true
+                    retryAt = ProcessInfo.processInfo.systemUptime + 2
                     return
                 }
             }
@@ -401,9 +411,16 @@ final class Mic: @unchecked Sendable {
             var c = chunk
             do {
                 try file.write(from: out)
+                writeFailed = false
             } catch {
-                if !writeFailed { Log.line("audio write failed: \(error.localizedDescription)") }
+                // Its drive went away, most likely: close it, and the next
+                // chunk goes wherever the session says now.
+                Log.line("audio write failed in \(c.url.path): \(error.localizedDescription); a new chunk in 2 s")
                 writeFailed = true
+                retryAt = ProcessInfo.processInfo.systemUptime + 2
+                current = (c, file)
+                closed = closeLocked()
+                return
             }
             c.frames += Int64(out.frameLength)
             c.end = arrived + seconds

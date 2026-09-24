@@ -124,10 +124,21 @@ sessions/20260924-122534/
   .lock            held by whoever is recording or transcribing it
 ```
 
-Each file sits in a store (to begin with, this Mac's sessions folder) at a
-path the catalog records, so old pictures can move to another drive by
-copying them and changing their rows. The timeline names each picture where
-it is now.
+Each file sits in a store (this Mac's sessions folder, or the recordings
+folder) at a path the catalog records, so old pictures can move to another
+drive by copying them and changing their rows. The timeline names each
+picture where it is now.
+
+**The recordings folder.** Settings → Recording → Keep recordings in can put
+the sound and pictures somewhere else: a folder on an external drive, say.
+Each file goes there if the folder is there at the moment it is written, and
+to this Mac's sessions folder if it is not, so a drive that is not plugged
+in, or is unplugged in the middle of a session, never costs a recording. The
+pill says when a session starts without the folder, and each time it goes
+or comes back. The catalog, the timelines and the locks stay on this Mac.
+Choosing the folder writes to it once straight away, so anything macOS asks
+about the drive is asked then and not in the middle of a session.
+`car config recordings <folder|none>` sets it too.
 
 Times are milliseconds on one clock for words and events alike, a clock that
 keeps counting while the Mac sleeps, so "the word *here*" and "the click"

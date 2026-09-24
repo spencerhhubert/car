@@ -30,6 +30,7 @@ final class SettingsModel {
     private(set) var spending: [(name: String, total: Usage.Total)] = []
     private(set) var byModel: [(model: String, total: Usage.Total)] = []
     private(set) var disk: Storage.Use?
+    private(set) var recordingsError: String?
 
     struct Permissions: Equatable {
         var accessibility = false
@@ -112,6 +113,28 @@ final class SettingsModel {
         }
     }
 
+    /// Choose the recordings folder. It is written to at once, so anything
+    /// macOS asks about a drive is asked now, not in the middle of a session.
+    func chooseRecordings() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Keep Recordings Here"
+        panel.message = "Sound and pictures of new sessions go here while it is there, and to this Mac while it is not."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let probe = url.appending(path: ".\(Config.name)-\(UUID().uuidString)")
+        do {
+            try Data().write(to: probe)
+            try FileManager.default.removeItem(at: probe)
+            recordingsError = nil
+            config.recordings = url.path
+        } catch {
+            recordingsError = "\(Config.name) cannot write to \(url.lastPathComponent): \(error.localizedDescription)"
+        }
+        reload()
+    }
+
     func grantAccessibility() { Keys.requestTrust() }
     func grantMicrophone() { Task { _ = await Mic.requestPermission(); reload() } }
     func grantScreen() { Screenshot.requestPermission() }
@@ -175,6 +198,16 @@ struct SettingsView: View {
                 Picker("Quality", selection: $model.config.soundQuality) {
                     ForEach(SoundQuality.allCases, id: \.self) { Text($0.name).tag($0) }
                 }
+                LabeledContent {
+                    HStack {
+                        if model.config.recordings != nil { Button("This Mac") { model.config.recordings = nil } }
+                        Button("Choose…") { model.chooseRecordings() }
+                    }
+                } label: {
+                    Text("Keep recordings in")
+                    Text(model.config.recordings ?? "this Mac").textStyle(.detail).lineLimit(1).truncationMode(.middle)
+                }
+                if let e = model.recordingsError { Text(e).textStyle(.note).foregroundStyle(Tint.failed) }
                 LabeledContent("Quick dictation starts after") {
                     HStack(spacing: Spacing.s) {
                         Text("\(Int(model.config.dictationPause)) s of quiet").monospacedDigit()
@@ -184,7 +217,7 @@ struct SettingsView: View {
             } header: {
                 Text("Recording")
             } footer: {
-                Text("\(model.config.soundQuality.name) quality: \(model.config.soundQuality.purpose). Transcription hears the same at any quality. A change is used from the next session.")
+                Text("\(model.config.soundQuality.name) quality: \(model.config.soundQuality.purpose). Transcription hears the same at any quality. Sound and pictures go to the recordings folder while it is there, and to this Mac while it is not (a drive not plugged in); the pill says which. Changes are used from the next session.")
                     .textStyle(.note)
             }
 
@@ -235,6 +268,11 @@ struct SettingsView: View {
                 LabeledContent("Catalog", value: d.map { Storage.bytes($0.catalog + $0.other) } ?? "…")
                 LabeledContent("All of it", value: d.map { Storage.bytes($0.total) } ?? "…").fontWeight(.medium)
                 LabeledContent("Free on this disk", value: d?.free.map(Storage.bytes) ?? "…")
+                if let f = d?.recordings {
+                    LabeledContent("In the recordings folder", value: f.bytes.map { bytes in
+                        Storage.bytes(bytes) + (f.free.map { " · \(Storage.bytes($0)) free" } ?? "")
+                    } ?? "not there now")
+                }
             } header: {
                 Text("Disk")
             } footer: {

@@ -85,10 +85,10 @@ import Testing
         // gap between them is silence in the file.
         try Self.chunk(s.dir.appending(path: "audio/0001.m4a"), .high, seconds: 3, voice: [(0, 3)])
         try Self.chunk(s.dir.appending(path: "audio/0002.m4a"), .high, seconds: 3, voice: [(0, 3)])
-        s.chunkOpened(1, file: "audio/0001.m4a", start: s.t0 + 1)
-        s.chunkClosed(1, file: "audio/0001.m4a", end: s.t0 + 4, seconds: 3, peakDb: -12)
-        s.chunkOpened(2, file: "audio/0002.m4a", start: s.t0 + 6)
-        s.chunkClosed(2, file: "audio/0002.m4a", end: s.t0 + 9, seconds: 3, peakDb: -12)
+        s.chunkOpened(1, url: s.dir.appending(path: "audio/0001.m4a"), store: "local", start: s.t0 + 1)
+        s.chunkClosed(1, url: s.dir.appending(path: "audio/0001.m4a"), end: s.t0 + 4, seconds: 3, peakDb: -12)
+        s.chunkOpened(2, url: s.dir.appending(path: "audio/0002.m4a"), store: "local", start: s.t0 + 6)
+        s.chunkClosed(2, url: s.dir.appending(path: "audio/0002.m4a"), end: s.t0 + 9, seconds: 3, peakDb: -12)
         Session.flush()
 
         let out = FileManager.default.temporaryDirectory.appending(path: "car-export-\(UUID().uuidString).wav")

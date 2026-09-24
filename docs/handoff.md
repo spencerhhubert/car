@@ -74,6 +74,15 @@ WAV for use elsewhere. Tested in CarKit (each quality written, heard and
 joined); not yet recorded live at medium or high. Pictures are still one
 quality; tiers for them are issue #8, which needs measuring first.
 
+## The recordings folder
+
+Sound and pictures can go to a folder of the person's choosing (an external
+drive); each file goes there while it is there and to this Mac while it is
+not, recorded per file in the catalog's stores, and a chunk whose drive
+vanishes mid-write is closed and the next one opens wherever the session says
+two seconds later. Tested in CarKit with a folder that goes and comes back;
+not yet with a real drive yanked mid-session.
+
 ## Renaming owl to car
 
 The repo, the package (CarKit), the apps (car, car-dev), the bundle ids

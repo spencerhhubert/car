@@ -279,10 +279,13 @@ MainActor.assumeIsolated {
         render(Viewer(script: script, id: p.id), NSSize(width: width, height: 720), "picture-\(mode).png")
     }
     let settings = SettingsModel(app: app)
+    settings.config.recordings = Config.root.path
     settings.reload()
     settings.config.microphones = [Config.Microphone(uid: "a", name: "Wireless Lav"),
                                    Config.Microphone(uid: "b", name: "Studio Display Microphone")]
-    render(SettingsView(model: settings), NSSize(width: 900, height: 1500), "settings-\(mode).png")
+    // The disk's numbers come back off the main thread.
+    RunLoop.main.run(until: Date().addingTimeInterval(1))
+    render(SettingsView(model: settings), NSSize(width: 900, height: 1900), "settings-\(mode).png")
     render(Sidebar(library: w.library), NSSize(width: 240, height: 400), "sidebar-\(mode).png")
 
     // The pill: the dot quiet, speaking and paused; the toolbar, and paused.

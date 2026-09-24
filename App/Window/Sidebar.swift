@@ -32,7 +32,7 @@ struct Sidebar: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(Pointer.session(id), forType: .string)
                 }
-                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([Session.dir(id)]) }
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(Session.folders(id)) }
             }
         }
         .overlay {

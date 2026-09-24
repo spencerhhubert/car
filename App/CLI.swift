@@ -147,6 +147,14 @@ enum CLI {
                     case "dictationPause":
                         guard let v = Double(rest[1]), v > 0 else { throw Failure("dictationPause is seconds") }
                         c.dictationPause = v
+                    case "recordings":
+                        if rest[1] == "none" {
+                            c.recordings = nil
+                        } else {
+                            let path = URL(fileURLWithPath: rest[1]).standardizedFileURL.path
+                            guard FileManager.default.fileExists(atPath: path) else { throw Failure("\(path) is not there") }
+                            c.recordings = path
+                        }
                     case "soundQuality":
                         guard let q = SoundQuality(rawValue: rest[1]) else { throw Failure("soundQuality is low, medium or high") }
                         c.soundQuality = q
@@ -159,6 +167,7 @@ enum CLI {
                 print("localModel  \(c.localModel)")
                 print("microphones \((c.microphones.map(\.name) + ["system default"]).joined(separator: ", then "))")
                 print("soundQuality \(c.soundQuality.rawValue) (\(c.soundQuality.summary))")
+                print("recordings  \(c.recordings ?? "this Mac")")
                 print("dictationPause \(Int(c.dictationPause)) s")
                 print("keys        \(c.keys)")
                 print("key         \(Config.openRouterKey == nil ? "missing" : "present")")
@@ -276,7 +285,7 @@ enum CLI {
           \(car) pointer <id|last>
           \(car) transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
           \(car) bench <id|last> [--chunk N] [--model M]
-          \(car) models | config [remoteModel|localModel|soundQuality|dictationPause|keys VALUE] | render <id|last> | guide | version
+          \(car) models | config [remoteModel|localModel|soundQuality|recordings|dictationPause|keys VALUE] | render <id|last> | guide | version
 
         M: start, end, m3 (marker 3), -20m (before the end), 12:30 (session clock).
         Tap ⌥ twice: with ⌘ held to start or stop a session, alone to set a marker, with ⇧ held to copy

@@ -34,6 +34,9 @@ public struct Config: Codable, Sendable {
     /// How the sound is kept (Sound.swift). Transcription hears the same
     /// whichever it is.
     public var soundQuality = SoundQuality.low
+    /// A folder for the sound and pictures (on a drive, say), or nil for
+    /// this Mac. While it is not there they are kept on this Mac.
+    public var recordings: String?
     /// Quick dictation (⇧ ⌥ ⌥) copies what was said since the last pause
     /// of at least this many seconds.
     public var dictationPause = 15.0
@@ -134,6 +137,7 @@ public struct Config: Codable, Sendable {
         localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel
         microphones = try c.decodeIfPresent([Microphone].self, forKey: .microphones) ?? d.microphones
         soundQuality = try c.decodeIfPresent(SoundQuality.self, forKey: .soundQuality) ?? d.soundQuality
+        recordings = try c.decodeIfPresent(String.self, forKey: .recordings)
         dictationPause = try c.decodeIfPresent(Double.self, forKey: .dictationPause) ?? d.dictationPause
         keys = try c.decodeIfPresent(Bool.self, forKey: .keys) ?? d.keys
     }

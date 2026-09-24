@@ -36,11 +36,22 @@ final class Recording {
     /// for the person.
     static func begin(config: Config, drawing: Drawing,
                       onNote: @escaping @MainActor (String) -> Void) async throws -> Recording {
-        let session = try Session(input: Mic.first(of: config.microphones))
+        let session = try Session(input: Mic.first(of: config.microphones),
+                                  recordings: config.recordings.map { URL(fileURLWithPath: $0) })
+        // The recordings folder: said when a session starts without it,
+        // and each time it goes or comes back after that.
+        let told = Told()
+        session.onMove = { there in
+            guard told.change(there) else { return }
+            let what = there ? "recording to \(config.recordings.map { ($0 as NSString).lastPathComponent } ?? "the folder") again"
+                             : "the recordings folder is not there; keeping this on the Mac"
+            Log.line("session \(session.id): \(what)")
+            Task { @MainActor in onNote(what) }
+        }
         let transcriber = Transcriber(id: session.id)
-        let mic = Mic(onOpen: { c in session.chunkOpened(c.n, file: c.file, start: c.start) },
+        let mic = Mic(onOpen: { c in session.chunkOpened(c.n, url: c.url, store: c.store, start: c.start) },
                       onClose: { c in
-                          session.chunkClosed(c.n, file: c.file, end: c.end, seconds: c.seconds, peakDb: Double(c.peak))
+                          session.chunkClosed(c.n, url: c.url, end: c.end, seconds: c.seconds, peakDb: Double(c.peak))
                           Task { await transcriber.add(c.n) }
                       },
                       onMicrophone: { name in session.event("microphone", ["name": name]) },
@@ -49,7 +60,7 @@ final class Recording {
                           Task { @MainActor in onNote(what) }
                       })
         do {
-            try await mic.start(into: session.dir, order: config.microphones, quality: config.soundQuality)
+            try await mic.start(into: { session.place("audio") }, order: config.microphones, quality: config.soundQuality)
         } catch {
             session.remove()
             throw error
@@ -79,7 +90,8 @@ final class Recording {
         guard paused, !changing else { return }
         changing = true
         defer { changing = false }
-        try await mic.start(into: session.dir, order: config.microphones, quality: config.soundQuality)
+        try await mic.start(into: { [session] in session.place("audio") }, order: config.microphones,
+                            quality: config.soundQuality)
         watcher.resume()
         paused = false
     }
@@ -131,5 +143,19 @@ final class Recording {
         watcher.halt()
         await mic.stop()
         session.remove()
+    }
+}
+
+/// Whether the files' place changed from what the person was last told. At
+/// the start only its absence is news.
+private final class Told: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last: Bool?
+
+    func change(_ there: Bool) -> Bool {
+        lock.withLock {
+            defer { last = there }
+            return last == nil ? !there : last != there
+        }
     }
 }

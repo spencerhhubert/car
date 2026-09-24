@@ -15,6 +15,13 @@ import Foundation
 //     session.md       the timeline, written out when the session finishes
 //     .lock            held by the process recording or transcribing it
 //
+// With a recordings folder chosen (a drive, say), the sound and pictures go
+// to <folder>/<id>/ instead, each file to wherever `place` says at the
+// moment it is written: the folder while it is there, this Mac's session
+// folder while it is not, so a drive that is not plugged in, or is
+// unplugged mid-session, never costs a recording. The catalog records which
+// store each file went to, so it is always found.
+//
 // A session is recording, then transcribing (its last chunks), then done or
 // failed. The lock says whether anyone is still at it: a session left
 // recording or transcribing with its lock free was orphaned by a crash or a
@@ -30,15 +37,29 @@ public final class Session: @unchecked Sendable {
     /// The session clock's zero, on `Clock`.
     public let t0: Double
     public let lock: SessionLock
+    /// The recordings folder chosen when it started, if one was.
+    public let recordings: URL?
+    /// Hears, once each time it changes, whether the heavy files are going
+    /// to the recordings folder (true) or, with it gone, to this Mac (false).
+    public var onMove: (@Sendable (Bool) -> Void)?
     private let mutex = NSLock()
     private var open = true
+    private var away: Bool?
 
-    public init(input: String) throws {
+    /// Where a file of one kind (`audio`, `shots`) goes now: a store the
+    /// catalog knows, and the folder in it.
+    public struct Place: Sendable {
+        public let store: String
+        public let dir: URL
+    }
+
+    public init(input: String, recordings: URL? = nil) throws {
         startedAt = Date()
         t0 = Clock.now
         (id, dir) = try Session.makeFolder(for: startedAt)
         guard let lock = SessionLock(dir) else { throw Failure("could not lock \(dir.path)") }
         self.lock = lock
+        self.recordings = recordings
         for sub in ["audio", "shots"] {
             try FileManager.default.createDirectory(at: dir.appending(path: sub), withIntermediateDirectories: true)
         }
@@ -49,7 +70,32 @@ public final class Session: @unchecked Sendable {
         try Catalog.shared.sync { h in
             try h.run("INSERT INTO sessions (id, started_at, time_zone, state, input) VALUES (?, ?, ?, 'recording', ?)",
                       [id, started, TimeZone.current.identifier, input])
+            if let recordings {
+                try h.run("INSERT OR IGNORE INTO stores (name, root) VALUES (?, ?)", [recordings.path, recordings.path])
+            }
         }
+    }
+
+    /// Where a file of `kind` goes now. The recordings folder when one was
+    /// chosen and it is there (the folder itself must exist: it is never
+    /// made, so a drive that is not mounted is never mistaken for an empty
+    /// folder on this Mac), else this Mac's session folder.
+    public func place(_ kind: String) -> Place {
+        var there: Place?
+        if let recordings, FileManager.default.fileExists(atPath: recordings.path) {
+            let dir = recordings.appending(path: "\(id)/\(kind)")
+            if (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil {
+                there = Place(store: recordings.path, dir: dir)
+            }
+        }
+        if recordings != nil {
+            let moved = mutex.withLock { () -> Bool in
+                defer { away = there != nil }
+                return away != (there != nil)
+            }
+            if moved { onMove?(there != nil) }
+        }
+        return there ?? Place(store: "local", dir: dir.appending(path: kind))
     }
 
     /// Milliseconds since the session started, now.
@@ -74,18 +120,17 @@ public final class Session: @unchecked Sendable {
         }
     }
 
-    /// A picture was written to `shots/<name>`: catalog the file and record
-    /// the moment.
-    public func shot(_ name: String, at t: Int, _ fields: [String: Any]) {
+    /// A picture was written to `url`, in `store`: catalog the file and
+    /// record the moment.
+    public func shot(_ url: URL, store: String, at t: Int, _ fields: [String: Any]) {
         guard isOpen else { return }
-        let bytes = (try? FileManager.default.attributesOfItem(atPath: dir.appending(path: "shots/\(name)").path)[.size])
-            as? Int
-        let id = id
+        let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? Int
+        let (id, name) = (id, url.lastPathComponent)
         Catalog.shared.async { h in
             var f = fields
             try h.transaction {
-                try h.run("INSERT INTO files (session, kind, t, store, path, bytes) VALUES (?, 'shot', ?, 'local', ?, ?)",
-                          [id, t, "\(id)/shots/\(name)", bytes])
+                try h.run("INSERT INTO files (session, kind, t, store, path, bytes) VALUES (?, 'shot', ?, ?, ?, ?)",
+                          [id, t, store, "\(id)/shots/\(name)", bytes])
                 f["file"] = h.lastID
                 let data = try JSONSerialization.data(withJSONObject: f, options: [.sortedKeys, .withoutEscapingSlashes])
                 try h.run("INSERT INTO events (session, t, kind, data) VALUES (?, ?, 'shot', ?)",
@@ -108,25 +153,25 @@ public final class Session: @unchecked Sendable {
         return (n, t, at)
     }
 
-    /// Chunk `n` of the sound began at `start` (on `Clock`), in `file`
-    /// under the session's folder. It is in the catalog from its first
-    /// sample, so a crash mid-chunk leaves a row that says what was lost.
-    public func chunkOpened(_ n: Int, file: String, start: Double) {
-        let (id, start) = (id, ms(start))
+    /// Chunk `n` of the sound began at `start` (on `Clock`), in `url`, in
+    /// `store`. It is in the catalog from its first sample, so a crash
+    /// mid-chunk leaves a row that says what was lost.
+    public func chunkOpened(_ n: Int, url: URL, store: String, start: Double) {
+        let (id, start, name) = (id, ms(start), url.lastPathComponent)
         Catalog.shared.async { h in
             try h.transaction {
-                try h.run("INSERT INTO files (session, kind, t, store, path) VALUES (?, 'audio', ?, 'local', ?)",
-                          [id, start, "\(id)/\(file)"])
+                try h.run("INSERT INTO files (session, kind, t, store, path) VALUES (?, 'audio', ?, ?, ?)",
+                          [id, start, store, "\(id)/audio/\(name)"])
                 try h.run("INSERT INTO chunks (session, n, start_ms, state, file) VALUES (?, ?, ?, 'recording', ?)",
                           [id, n, start, h.lastID])
             }
         }
     }
 
-    /// Chunk `n` is finished (its last sample at `end`, on `Clock`) and can
-    /// be transcribed.
-    public func chunkClosed(_ n: Int, file: String, end: Double, seconds: Double, peakDb: Double) {
-        let bytes = (try? FileManager.default.attributesOfItem(atPath: dir.appending(path: file).path)[.size]) as? Int
+    /// Chunk `n`, in `url`, is finished (its last sample at `end`, on
+    /// `Clock`) and can be transcribed.
+    public func chunkClosed(_ n: Int, url: URL, end: Double, seconds: Double, peakDb: Double) {
+        let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? Int
         let (id, end) = (id, ms(end))
         Catalog.shared.async { h in
             try h.run("""
@@ -154,6 +199,7 @@ public final class Session: @unchecked Sendable {
         let id = id
         _ = try? Catalog.shared.sync { h in try h.run("DELETE FROM sessions WHERE id = ?", [id]) }
         try? FileManager.default.removeItem(at: dir)
+        if let recordings { try? FileManager.default.removeItem(at: recordings.appending(path: id)) }
         lock.release()
     }
 
@@ -185,6 +231,18 @@ public final class Session: @unchecked Sendable {
     // MARK: - reading sessions back
 
     public static func dir(_ id: String) -> URL { Config.sessionsDir.appending(path: id) }
+
+    /// Every folder that holds some of a session's files and is there now:
+    /// this Mac's, and the recordings folder's when any went there.
+    public static func folders(_ id: String) -> [URL] {
+        let roots = (try? Catalog.shared.sync { h in
+            h.rows("SELECT DISTINCT stores.root AS root FROM files JOIN stores ON stores.name = files.store WHERE files.session = ?",
+                   [id]).compactMap { $0.text("root") }
+        }) ?? []
+        let all = [dir(id)] + roots.map { URL(fileURLWithPath: $0).appending(path: id) }
+        var seen = Set<String>()
+        return all.filter { seen.insert($0.path).inserted && FileManager.default.fileExists(atPath: $0.path) }
+    }
 
     public static func list() -> [SessionRecord] {
         (try? Catalog.shared.sync { h in h.rows("SELECT * FROM sessions ORDER BY id").map(SessionRecord.init) }) ?? []

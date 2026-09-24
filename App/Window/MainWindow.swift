@@ -127,7 +127,7 @@ final class MainWindow: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
 
     @objc private func revealInFinder() {
         guard let id = library.selectedID else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([Session.dir(id)])
+        NSWorkspace.shared.activateFileViewerSelecting(Session.folders(id))
     }
 }
 

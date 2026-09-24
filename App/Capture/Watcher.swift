@@ -221,8 +221,8 @@ final class Watcher {
             try? await Task.sleep(for: .seconds(delay))
             guard let self, self.writing else { return }
             let t = self.session.now
-            guard let file = await self.shots.take(target, marks: self.marks,
-                                                   into: self.session.dir.appending(path: "shots"),
+            let place = self.session.place("shots")
+            guard let file = await self.shots.take(target, marks: self.marks, into: place.dir,
                                                    name: String(format: "%08d", t), force: force)
             else { return }
             var f: [String: Any] = ["why": why]
@@ -230,7 +230,7 @@ final class Watcher {
                 f["app"] = app
                 f["title"] = title
             }
-            self.session.shot(file, at: t, f)
+            self.session.shot(place.dir.appending(path: file), store: place.store, at: t, f)
         }
     }
 

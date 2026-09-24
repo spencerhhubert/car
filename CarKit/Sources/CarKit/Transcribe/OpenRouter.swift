@@ -8,7 +8,7 @@ public enum OpenRouter {
         public init(id: String, name: String) { self.id = id; self.name = name }
     }
     struct Segment: Codable { var start: Double; var end: Double; var text: String }
-    /// Sound to send, and what it is (mp3, m4a).
+    /// Sound to send, and what it is (m4a, wav).
     struct Audio { let data: Data; let format: String }
 
     private static let url = URL(string: "https://openrouter.ai/api/v1/chat/completions")!

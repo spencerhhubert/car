@@ -62,6 +62,22 @@ import Testing
         #expect(bytes[.low]! < bytes[.medium]! && bytes[.medium]! < bytes[.high]!)
     }
 
+    @Test func whatIsSentIsASmallM4AMadeHere() throws {
+        let samples = VoiceTests.sound(8, voice: [(1, 7)])
+        let clip = try Clip([Voice.Segment(start: 0, end: 8)], samples, Sound.heardRate)
+        defer { clip.remove() }
+        let sent = try Transcribe.upload(clip.url)
+        #expect(sent.format == "m4a")
+        let wav = try FileManager.default.attributesOfItem(atPath: clip.url.path)[.size] as? Int ?? 0
+        #expect(sent.data.count > 0 && sent.data.count < wav / 3)
+        // It is sound, of the same length.
+        let back = FileManager.default.temporaryDirectory.appending(path: "car-sent-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: back) }
+        try sent.data.write(to: back)
+        let file = try AVAudioFile(forReading: back)
+        #expect(abs(Double(file.length) / file.fileFormat.sampleRate - 8) < 0.05)
+    }
+
     @Test func aStretchIsJoinedAtItsPlacesOnTheClock() throws {
         let s = try Session(input: "test mic")
         defer { s.remove() }

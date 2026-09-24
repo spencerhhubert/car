@@ -240,25 +240,22 @@ public enum Transcribe {
         return out
     }
 
-    /// The bytes to send: a small mp3 when ffmpeg is installed (made in a
-    /// temporary file, not kept), else the file as it is.
+    /// The bytes to send: the voice clip as AAC at 32 kbps, a fifth the
+    /// size of the WAV, made in a temporary file and not kept. The same on
+    /// every Mac: nothing outside the system is needed.
     static func upload(_ audio: URL) throws -> OpenRouter.Audio {
-        for ff in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"] where FileManager.default.isExecutableFile(atPath: ff) {
-            let mp3 = FileManager.default.temporaryDirectory.appending(path: "car-\(UUID().uuidString).mp3")
-            defer { try? FileManager.default.removeItem(at: mp3) }
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: ff)
-            p.arguments = ["-y", "-loglevel", "error", "-i", audio.path, "-ac", "1", "-ar", "16000", "-b:a", "24k", mp3.path]
-            p.standardOutput = FileHandle.nullDevice
-            p.standardError = FileHandle.nullDevice
-            try p.run()
-            p.waitUntilExit()
-            if p.terminationStatus == 0, let data = try? Data(contentsOf: mp3), !data.isEmpty {
-                return OpenRouter.Audio(data: data, format: "mp3")
-            }
-            break
-        }
-        return OpenRouter.Audio(data: try Data(contentsOf: audio), format: audio.pathExtension == "wav" ? "wav" : "m4a")
+        let m4a = FileManager.default.temporaryDirectory.appending(path: "car-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: m4a) }
+        let source = try AVAudioFile(forReading: audio)
+        guard let buf = AVAudioPCMBuffer(pcmFormat: source.processingFormat, frameCapacity: AVAudioFrameCount(source.length))
+        else { throw Failure("cannot read \(audio.lastPathComponent)") }
+        try source.read(into: buf)
+        var settings = SoundQuality.low.fileSettings
+        settings[AVSampleRateKey] = source.processingFormat.sampleRate
+        let out = try AVAudioFile(forWriting: m4a, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        try out.write(from: buf)
+        out.close()
+        return OpenRouter.Audio(data: try Data(contentsOf: m4a), format: "m4a")
     }
 }
 

@@ -270,8 +270,9 @@ the words are the local model's.
 ## Install
 
 car is not distributed as a download: you build it. It needs macOS 26 (the
-on-device recognizer), Xcode, and `xcodegen` (`brew install xcodegen`);
-`ffmpeg` is optional (with it the voice is sent as a small mp3).
+on-device recognizer), Xcode, and `xcodegen` (`brew install xcodegen`).
+Nothing else: the app uses only what comes with macOS, so it behaves the
+same on every Mac.
 
 ```
 ./build.sh release

@@ -13,8 +13,8 @@ import Foundation
 //      not the chunk, and capped at what a person could say in the time. It
 //      runs alongside the local model, so a chunk takes as long as the slower.
 //   5. Align lays the remote words onto the local ones; without local times,
-//      the words are spread over the voice by length. Refine snaps starts to
-//      the onsets heard in the sound.
+//      the words are spread over the voice by length. Refine fits them to the
+//      sound: starts to onsets and past pauses, ends to where it falls.
 //   6. The words go into the catalog on the session clock.
 //
 // Either model can be missing ("none", or no key): the local model's words
@@ -89,15 +89,26 @@ public enum Transcribe {
         let duration = Double(samples.count) / rate
         var words = timed.isEmpty ? spread(tokens, over: segments)
                                   : Align.merge(text: tokens, timed: timed, duration: duration)
-        Refine.onsets(&words, env: Refine.envelope(samples, rate: rate))
+        Refine.fit(&words, env: Refine.envelope(samples, rate: rate))
         Refine.monotonic(&words)
         if !timed.isEmpty, words.count > 10, !words.contains(where: { $0.how.hasPrefix("matched") }) {
             notes.append("no word lines up with what the local model heard; treat it as unverified")
         }
 
-        // 6. Onto the session clock. The microphone's clock and the
-        // machine's drift apart by parts per million; the ratio of the
-        // chunk's span on the session clock to its sound corrects it.
+        // 6.
+        try save(words, id, c, duration: duration)
+        store(id, c.n, state: .transcribed, remoteModel: remote ?? "none",
+              localModel: timed.isEmpty ? "none" : "apple", note: notes.isEmpty ? nil : notes.joined(separator: "; "))
+        Log.line(String(format: "%@ chunk %d: %d words from %.0f of %.0f s of voice", id, c.n, words.count,
+                        clip.seconds, duration))
+        return .transcribed
+    }
+
+    /// A chunk's words onto the session clock, in place of any it had. The
+    /// microphone's clock and the machine's drift apart by parts per
+    /// million; the ratio of the chunk's span on the session clock to its
+    /// sound corrects it.
+    private static func save(_ words: [Align.Timed], _ id: String, _ c: ChunkRecord, duration: Double) throws {
         var scale = 1.0
         if let end = c.endMs, duration > 0 {
             let s = Double(end - c.startMs) / 1000 / duration
@@ -116,11 +127,36 @@ public enum Transcribe {
                 }
             }
         }
-        store(id, c.n, state: .transcribed, remoteModel: remote ?? "none",
-              localModel: timed.isEmpty ? "none" : "apple", note: notes.isEmpty ? nil : notes.joined(separator: "; "))
-        Log.line(String(format: "%@ chunk %d: %d words from %.0f of %.0f s of voice", id, c.n, words.count,
-                        clip.seconds, duration))
-        return .transcribed
+    }
+
+    /// Fit a transcribed session's words to its sound again, with no model:
+    /// the same words, timed the way car times them now. For sessions
+    /// transcribed before the fitting last improved. How many words moved,
+    /// in how many chunks.
+    public static func refit(_ id: String) -> (chunks: Int, moved: Int) {
+        var (chunks, moved) = (0, 0)
+        for c in Session.chunks(id) where c.state == .transcribed {
+            guard let url = c.file.flatMap({ Session.path(file: $0) }), let samples = try? Sound.heard(url) else { continue }
+            let rows = (try? Catalog.shared.sync { h in
+                h.rows("SELECT text, s, e, how FROM words WHERE session = ? AND chunk = ? ORDER BY i", [id, c.n])
+            }) ?? []
+            let before = rows.map { r in
+                Align.Timed(text: r.text("text") ?? "", start: r.real("s") ?? 0, end: r.real("e") ?? 0, how: r.text("how") ?? "")
+            }
+            var words = before
+            Refine.fit(&words, env: Refine.envelope(samples, rate: Sound.heardRate), snap: false)
+            Refine.monotonic(&words)
+            let changed = zip(before, words).filter { abs($0.start - $1.start) > 0.001 || abs($0.end - $1.end) > 0.001 }.count
+            guard changed > 0 else { continue }
+            do {
+                try save(words, id, c, duration: Double(samples.count) / Sound.heardRate)
+                chunks += 1
+                moved += changed
+            } catch {
+                Log.line("\(id) chunk \(c.n): words not refitted: \(error.localizedDescription)")
+            }
+        }
+        return (chunks, moved)
     }
 
     /// The local model's words, timed on the chunk, or why there are none.
@@ -294,14 +330,19 @@ struct Clip: Sendable {
         try file.write(from: buf)
     }
 
-    /// A time in the clip, as a time in the chunk.
-    func chunkTime(_ t: Double) -> Double {
-        guard let p = placed.last(where: { $0.at <= t }) ?? placed.first else { return t }
+    /// A time in the clip, as a time in the chunk. A time in the silence
+    /// between two stretches is the end of the stretch before it, or, for
+    /// the start of a word (`starting`), the start of the stretch after it:
+    /// a recognizer starts the word after a pause in the pause.
+    func chunkTime(_ t: Double, starting: Bool = false) -> Double {
+        guard let i = placed.lastIndex(where: { $0.at <= t }) ?? placed.indices.first else { return t }
+        let p = placed[i]
+        if starting, t > p.at + p.segment.length, placed.indices.contains(i + 1) { return placed[i + 1].segment.start }
         return p.segment.start + min(max(0, t - p.at), p.segment.length)
     }
 
     func onChunk(_ w: LocalModel.Word) -> LocalModel.Word {
-        LocalModel.Word(text: w.text, start: chunkTime(w.start), end: chunkTime(w.end))
+        LocalModel.Word(text: w.text, start: chunkTime(w.start, starting: true), end: chunkTime(w.end))
     }
 
     func remove() { try? FileManager.default.removeItem(at: url) }

@@ -118,7 +118,7 @@ final class Catalog: @unchecked Sendable {
             end_ms INTEGER NOT NULL,
             s REAL NOT NULL,                   -- seconds into the chunk's audio
             e REAL NOT NULL,
-            how TEXT NOT NULL,                 -- matched, interpolated, +onset
+            how TEXT NOT NULL,                 -- matched, interpolated, spread; +pause, +onset
             PRIMARY KEY (session, chunk, i)
         )
         """,

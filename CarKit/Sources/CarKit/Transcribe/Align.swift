@@ -15,8 +15,9 @@ enum Align {
         /// Seconds into the audio.
         var start: Double
         var end: Double
-        /// "matched", "interpolated"; Refine appends "+onset" when it moved
-        /// the start to a heard onset.
+        /// "matched", "interpolated"; Refine appends "+pause" when it moved
+        /// the start past a pause, "+onset" when it snapped it to a heard
+        /// onset.
         var how: String
     }
 

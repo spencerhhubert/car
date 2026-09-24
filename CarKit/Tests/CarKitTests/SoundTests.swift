@@ -78,6 +78,31 @@ import Testing
         #expect(abs(Double(file.length) / file.fileFormat.sampleRate - 8) < 0.05)
     }
 
+    @Test func refitMovesAWordPastThePauseItWasGiven() throws {
+        let s = try Session(input: "test mic")
+        defer { s.remove() }
+        let url = s.dir.appending(path: "audio/0001.m4a")
+        try Self.chunk(url, .low, seconds: 5, voice: [(0.2, 1), (3, 4)])
+        s.chunkOpened(1, url: url, store: "local", start: s.t0)
+        s.chunkClosed(1, url: url, end: s.t0 + 5, seconds: 5, peakDb: -12)
+        Session.flush()
+        // Timed the old way: "then" starts where the speech before the pause stopped.
+        try Catalog.shared.sync { h in
+            for (i, w) in [("one", 0.2, 1.0), ("then", 1.0, 3.5), ("two", 3.5, 4.0)].enumerated() {
+                try h.run("INSERT INTO words (session, chunk, i, text, start_ms, end_ms, s, e, how) VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'matched+onset')",
+                          [s.id, i, w.0, Int(w.1 * 1000), Int(w.2 * 1000), w.1, w.2])
+            }
+            try h.run("UPDATE chunks SET state = 'transcribed' WHERE session = ? AND n = 1", [s.id])
+        }
+        let r = Transcribe.refit(s.id)
+        #expect(r.chunks == 1 && r.moved >= 1)
+        let then = try #require(Session.words(s.id).first { $0.text == "then" })
+        #expect(abs(then.start - 3000) < 60 && then.how == "matched+onset+pause")
+        #expect(abs((Session.words(s.id).first { $0.text == "one" }?.end ?? 0) - 1000) < 60)
+        // Once is enough: a second pass moves nothing.
+        #expect(Transcribe.refit(s.id).moved == 0)
+    }
+
     @Test func aStretchIsJoinedAtItsPlacesOnTheClock() throws {
         let s = try Session(input: "test mic")
         defer { s.remove() }

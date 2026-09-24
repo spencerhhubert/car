@@ -32,13 +32,35 @@ car audio <session> [--from M] [--to M] --out F.wav   the sound itself, one file
 ```
 
 `car marker` waits until the words up to the marker are transcribed, which
-can take a minute right after the marker is set; let it. `car guide` explains
-car in full.
+can take a minute right after the marker is set; let it. So an instruction
+you cannot find is never "not transcribed yet". `car guide` explains car in
+full.
+
+## A session is many conversations; the marker is yours
+
+A session runs for hours and wanders: the person works on many things, goes
+back and forth between them, and hands markers to several agents, each its
+own. Most of a session is not about your task. The marker is: **the stretch
+right before it is what was meant for you.**
+
+- **Start at the marker and read backwards.** The instruction is what was
+  said just before it. The stretch since the previous marker often begins
+  with something else entirely (that marker was likely another agent's).
+- **Never cut `car marker` short with `head`.** `head` keeps the oldest
+  lines and drops the newest, which is where the instruction is. Read it
+  whole, or from the end (`tail`); a long stretch is what a busy day looks
+  like, not a sign it is not yours.
+- **Widen in rings, only as far as the words need:** the last remarks before
+  the marker; then the rest since the previous marker; then `--from -10m`,
+  `--from -30m`, an earlier marker, `--from start`, when the words lean on
+  earlier talk. Stop once you have it.
+- **Other markers are other hand-offs.** Talk between them can still be
+  about your task (people come back to things): judge by what was said, not
+  by where it sits, and leave what is about something else.
 
 ## Go as deep as the task needs
 
-Start with `car marker`: what was said since the previous marker. Read all of
-it, then decide how much more you need.
+Once you have the instruction, decide how much more you need.
 
 - **The words carry it** ("remind me to call the supplier Monday", "draft a
   reply saying no"): act on the words.
@@ -59,8 +81,10 @@ it, then decide how much more you need.
 ## The timeline
 
 - `[mm:ss.mmm]` (or `h:mm:ss.mmm`) is one clock for words and events alike.
-- Quoted lines are speech. `{red circle 1}` inside a quote is where in the
-  sentence that drawing was made. `▶ marker 3, set at …` is a hand-off point.
+- Speech is the lines with a time range, `[1:02.300–1:05.100] “…”`. Element
+  names in other lines are quoted too, so `“` alone does not pick out
+  speech. `{red circle 1}` inside speech is where in the sentence that
+  drawing was made. `▶ marker 3, set at …` is a hand-off point.
 - Other lines: `app`, `window` (title, document), `page` (URL), `finder`
   (folder, selected files), `focus`, `selected`, `click` (the element under
   the pointer), `key` (shortcuts only), `typed` (how many keys, and the

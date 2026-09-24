@@ -50,6 +50,7 @@ import Testing
         #expect(abs(clip.chunkTime(0.5) - 1.5) < 0.001)
         #expect(abs(clip.chunkTime(1 + Clip.gap + 0.2) - 4.2) < 0.001)
         #expect(abs(clip.chunkTime(1.1) - 2) < 0.001)   // in the gap: the end of the stretch before
+        #expect(abs(clip.chunkTime(1.1, starting: true) - 4) < 0.001)   // or, for a start, of the stretch after
     }
 
     @Test func wordsSpreadOverTheVoiceOnly() {

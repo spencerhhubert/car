@@ -19,6 +19,7 @@ import CarKit
 //   car usage            what transcription has cost
 //   car pointer <id|last>  the line that hands a whole session to an agent
 //   car transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
+//   car refit <id|last>  time its words to the sound again, the way car does now (no model)
 //   car bench <id|last> [--chunk N] [--model M]
 //   car models | config [key value] | render <id|last> | guide | version
 //
@@ -127,6 +128,15 @@ enum CLI {
                 await t.addUnsettled(again: rest.contains("--again"), all: rest.contains("--all"))
                 let out = await t.finish()
                 print("\(id): \(out.state.rawValue), \(out.words) words" + (out.error.map { "; \($0)" } ?? ""))
+            case "refit":
+                let id = try resolve(positional.first)
+                guard let lock = SessionLock(Session.dir(id)) else {
+                    throw Failure("\(Config.name) is recording or transcribing \(id) right now")
+                }
+                defer { lock.release() }
+                let r = Transcribe.refit(id)
+                if r.moved > 0 { try Render.write(id: id) }
+                print("\(id): \(count(r.moved, "word")) retimed in \(count(r.chunks, "chunk"))")
             case "bench":
                 let id = try resolve(positional.first)
                 let n = flag(rest, "--chunk").flatMap(Int.init) ?? 1
@@ -284,6 +294,7 @@ enum CLI {
           \(car) sessions | status | usage
           \(car) pointer <id|last>
           \(car) transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
+          \(car) refit <id|last>                           time its words to the sound again (no model)
           \(car) bench <id|last> [--chunk N] [--model M]
           \(car) models | config [remoteModel|localModel|soundQuality|recordings|dictationPause|keys VALUE] | render <id|last> | guide | version
 

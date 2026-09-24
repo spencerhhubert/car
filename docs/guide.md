@@ -225,10 +225,16 @@ The voice alone is cut into one short clip, and two models hear it:
 The two are lined up by a global word alignment (`Align.swift`): each word of
 the remote model's transcript that matches a timed word takes its time; a word
 with no partner is placed between its matched neighbours by its length. Then
-every word's start is moved to the onset actually heard in the sound, inside a
-short window around the local model's boundary (`Refine.swift`), which is what
-gets it within a frame. `car words` says how each word was timed: `matched`,
-`interpolated` or `spread`, with `+onset` when the start was snapped.
+every word is fitted to the sound (`Refine.swift`). A recognizer gives a pause
+to the word after it, so that word would start where the speech before the
+pause stopped, seconds early; a pause of a quarter second or more inside a
+word's span is taken out, and the word starts at the first rise after it.
+Otherwise the start moves to the onset heard in a short window around the
+local model's boundary, which is what gets it within a frame. A word ends
+where the sound falls into a pause, so a pause reads as the gap between two
+words, never inside one. `car words` says how each word was timed: `matched`,
+`interpolated` or `spread`, with `+pause` when its start was moved past a
+pause and `+onset` when it was snapped.
 
 **Judging a remote model's clock.** `car bench <id> --chunk N --model <id>`
 asks a model for its own timestamped segments, lays the same words onto both
@@ -325,6 +331,7 @@ car usage                                      what transcription has cost
 car pointer <id|last>                          the line that hands over a whole session
 car transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
                                                transcribe what is left (or failed, or all of it again)
+car refit <id|last>                            time a session's words to its sound again, the way car does now; no model, no cost
 car bench <id|last> [--chunk N] --model M      a model's clock against the on-device one
 car models | config [remoteModel|localModel|soundQuality|dictationPause|keys value] | render <id|last> | guide | version
 ```

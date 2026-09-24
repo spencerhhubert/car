@@ -96,41 +96,53 @@ when asked for it. A crash loses at most the chunk being written.
 The microphone is recorded as chunks of about three minutes, each cut at the
 first pause after that (four minutes at most), so each is transcribed while
 the next records. A marker cuts one on the spot. Each chunk is stamped on the
-session clock from the moment its first sample arrived.
+session clock from the moment its first sample arrived. The microphone
+reopens by itself when it changes or disappears (headphones connecting) and
+when the Mac wakes from sleep.
 
-A chunk the on-device recognizer hears no words in is silent: it costs
-nothing and nothing is sent. The microphone reopens by itself when it changes
-or disappears (headphones connecting) and when the Mac wakes from sleep.
+## From sound to words
 
-## How the words get their times
+A session runs all day and is mostly quiet, so the first question about a
+chunk is whether anyone spoke in it, and that is answered without a model
+(`Voice.swift`): a 20 ms frame is voice when it is louder than the room (9 dB
+over the noise floor of the last few seconds) and it buzzes at a voice's pitch
+(its autocorrelation peaks at a lag of 70–400 Hz), which fans, hiss, clicks
+and keyboards do not. Frames become stretches, short gaps between syllables
+are bridged, and each stretch is widened a quarter second to keep its soft
+edges. Checked against the words of real sessions, it catches 98.8% of words
+at their onset and keeps about 1.4 times the time actually spoken; a chunk
+with no voice goes no further and costs nothing.
 
-Two models, two jobs, per chunk:
+The voice alone is cut into one short clip, and two models hear it:
 
-1. **The times** come from Apple's on-device recognizer, which stamps every
+1. **The remote model** writes the words: a cloud model on OpenRouter
+   (default `google/gemini-3-flash-preview`), asked for a verbatim transcript
+   with the fillers left in. It is billed for the voice, not the chunk, and its
+   answer is capped at what a person could say in the time, so a model that
+   starts repeating itself is stopped there. Pick any audio-capable model, or
+   none, from the menu (*Remote model*) or with `owl config remoteModel <id>`;
+   `owl models` lists them.
+2. **The local model** keeps time: Apple's recognizer on this Mac stamps every
    run of its own transcript with the audio range it was heard in. Its words
-   are worse; its clock is real, because it comes from the sound rather than
-   from a model's sense of where in a file a sentence sits. It runs first,
-   and a chunk it hears nothing in goes no further.
-2. **The words** come from a cloud model on OpenRouter (default
-   `google/gemini-3-flash-preview`), asked for a verbatim transcript with the
-   fillers left in. Pick any audio-capable model from the menu or with
-   `owl config textModel <id>`; `owl models` lists them.
+   are worse; its clock is real, because it comes from the sound. It writes
+   the words when there is no remote model. It is asked with a deadline, since
+   fetching its language model has been seen to hang for minutes; set it to
+   none from the menu (*Local model*) and the words are spread over the voice
+   by length instead.
 
 The two are lined up by a global word alignment (`Align.swift`): each word of
-the text model's transcript that matches a timed word takes its time; a word
+the remote model's transcript that matches a timed word takes its time; a word
 with no partner is placed between its matched neighbours by its length. Then
 every word's start is moved to the onset actually heard in the sound, inside a
-short window around the recognizer's boundary (`Refine.swift`), which is what
+short window around the local model's boundary (`Refine.swift`), which is what
 gets it within a frame. `owl words` says how each word was timed: `matched`,
-`interpolated`, with `+onset` when the start was snapped.
+`interpolated` or `spread`, with `+onset` when the start was snapped.
 
-**Judging a time source.** `owl bench <id> --chunk N --model <id>` asks a
-model for its own timestamped segments, lays the same words onto both and
-reports the per-word difference in start time. On a 14 s clip,
-`google/gemini-3-flash-preview` placed words a median 717 ms from the
-on-device times, 4% within one frame, which is why it does not keep time by
-default. `owl config timeSource openrouter:<model>` switches to a model's
-clock if one ever does better.
+**Judging a remote model's clock.** `owl bench <id> --chunk N --model <id>`
+asks a model for its own timestamped segments, lays the same words onto both
+and reports the per-word difference in start time. On a 14 s clip,
+`google/gemini-3-flash-preview` placed words a median 717 ms from the local
+model, 4% within one frame, which is why the local model keeps time.
 
 ## What gets recorded
 
@@ -206,9 +218,10 @@ owl sessions                                   every session
 owl status                                     what is being recorded or transcribed now
 owl usage                                      what transcription has cost
 owl pointer <id|last>                          the line that hands over a whole session
-owl transcribe <id|last> [--again|--all]       transcribe what is left (or failed, or all of it again)
+owl transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
+                                               transcribe what is left (or failed, or all of it again)
 owl bench <id|last> [--chunk N] --model M      a model's clock against the on-device one
-owl models | config [key value] | render <id|last> | guide
+owl models | config [remoteModel|localModel|keys value] | render <id|last> | guide
 ```
 
 A moment `M` is `start`, `end`, `m3` (marker 3), `-20m` or `-90s` (before

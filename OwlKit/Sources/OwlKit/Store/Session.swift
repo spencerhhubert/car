@@ -325,8 +325,9 @@ public struct ChunkRecord: Sendable {
     public let soundSeconds: Double?
     public let peakDb: Double?
     public let state: State
-    public let textModel: String?
-    public let timeSource: String?
+    /// The model that wrote its words, and the one that timed them.
+    public let remoteModel: String?
+    public let localModel: String?
     public let note: String?
     public let error: String?
     public let file: Int?
@@ -338,8 +339,8 @@ public struct ChunkRecord: Sendable {
         soundSeconds = r.real("sound_seconds")
         peakDb = r.real("peak_db")
         state = State(rawValue: r.text("state") ?? "") ?? .failed
-        textModel = r.text("text_model")
-        timeSource = r.text("time_source")
+        remoteModel = r.text("remote_model")
+        localModel = r.text("local_model")
         note = r.text("note")
         error = r.text("error")
         file = r.int("file")

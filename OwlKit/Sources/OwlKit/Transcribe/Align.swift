@@ -1,10 +1,10 @@
 import Foundation
 
-// Lay the text model's words onto the timed words.
+// Lay the remote model's words onto the local model's timed words.
 //
-// Two transcripts of one recording: A, the words worth keeping (the text
-// model's), and B, words with times (the on-device recognizer's, or a model's
-// timed segments cut into words). They mostly agree, with different mistakes,
+// Two transcripts of one recording: A, the words worth keeping (the remote
+// model's), and B, words with times (the local model's, or a model's timed
+// segments cut into words). They mostly agree, with different mistakes,
 // so a global alignment matches most of A to B one for one and each matched
 // word takes B's time. A word with no partner (B missed it, or heard it
 // differently) is placed between its nearest matched neighbours, in
@@ -26,7 +26,7 @@ enum Align {
     }
 
     /// `duration` is the length of the audio, for words with no anchor at all.
-    static func merge(text: [String], timed: [AppleTimes.Word], duration: Double) -> [Timed] {
+    static func merge(text: [String], timed: [LocalModel.Word], duration: Double) -> [Timed] {
         let a = text.map(normalize)
         let b = timed.map { normalize($0.text) }
         let pairs = align(a, b)

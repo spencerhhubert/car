@@ -10,14 +10,9 @@ import Foundation
 // window, so a bad guess cannot move a word far.
 enum Refine {
     /// RMS energy in dB, one value per `hop` seconds.
-    static func envelope(url: URL, hop: Double = 0.005) throws -> [Float] {
-        let file = try AVAudioFile(forReading: url)
-        let fmt = file.processingFormat
-        guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(file.length)) else { return [] }
-        try file.read(into: buf)
-        guard let ch = buf.floatChannelData?[0] else { return [] }
-        let n = Int(buf.frameLength)
-        let step = max(1, Int(fmt.sampleRate * hop))
+    static func envelope(_ ch: [Float], rate: Double, hop: Double = 0.005) -> [Float] {
+        let n = ch.count
+        let step = max(1, Int(rate * hop))
         var out: [Float] = []
         out.reserveCapacity(n / step + 1)
         var i = 0

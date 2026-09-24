@@ -29,16 +29,21 @@ public enum OpenRouter {
     """
 
     /// The words, as one plain text.
-    static func transcribe(audio: Audio, model: String, key: String) async throws -> (String, Double?) {
+    /// The words of `seconds` of sound. The answer is capped at what a person
+    /// could say in the time, twice over: a chat model that starts repeating
+    /// itself on a clip is stopped there, not billed for pages.
+    static func transcribe(audio: Audio, seconds: Double, model: String, key: String) async throws -> (String, Double?) {
         let (text, cost) = try await chat(model: model, system: transcribePrompt,
-                                          userText: "Transcribe this recording.", audio: audio, key: key)
+                                          userText: "Transcribe this recording.", audio: audio, key: key,
+                                          maxTokens: Int(seconds * 10) + 200, timeout: 60 + seconds * 2)
         return (text.trimmingCharacters(in: .whitespacesAndNewlines), cost)
     }
 
     /// Timed segments, from a model asked to keep time itself.
-    static func timedSegments(audio: Audio, model: String, key: String) async throws -> ([Segment], Double?) {
+    static func timedSegments(audio: Audio, seconds: Double, model: String, key: String) async throws -> ([Segment], Double?) {
         let (text, cost) = try await chat(model: model, system: timesPrompt,
-                                          userText: "Transcribe this recording with timestamps.", audio: audio, key: key)
+                                          userText: "Transcribe this recording with timestamps.", audio: audio, key: key,
+                                          maxTokens: Int(seconds * 25) + 400, timeout: 60 + seconds * 2)
         var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if body.hasPrefix("```") {
             body = body.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "")
@@ -54,7 +59,7 @@ public enum OpenRouter {
     }
 
     static func chat(model: String, system: String, userText: String, audio: Audio?,
-                     key: String) async throws -> (String, Double?) {
+                     key: String, maxTokens: Int, timeout: TimeInterval) async throws -> (String, Double?) {
         var content: [[String: Any]] = [["type": "text", "text": userText]]
         if let audio {
             content.append(["type": "input_audio",
@@ -66,19 +71,20 @@ public enum OpenRouter {
             "temperature": 0,
             "reasoning": ["enabled": false],
             "usage": ["include": true],
+            "max_tokens": maxTokens,
         ]
         do {
-            return try await post(body, key: key)
+            return try await post(body, key: key, timeout: timeout)
         } catch let e as Failure where e.message.lowercased().contains("reasoning") {
             body["reasoning"] = nil
-            return try await post(body, key: key)
+            return try await post(body, key: key, timeout: timeout)
         }
     }
 
-    private static func post(_ body: [String: Any], key: String) async throws -> (String, Double?) {
+    private static func post(_ body: [String: Any], key: String, timeout: TimeInterval) async throws -> (String, Double?) {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        req.timeoutInterval = 600
+        req.timeoutInterval = timeout
         req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("owl", forHTTPHeaderField: "X-Title")

@@ -98,8 +98,11 @@ OwlKit/                 a Swift package: everything that is not the Mac's screen
       Log.swift             the log; Failure, the one error type
     Transcribe/           sound into timed words
       Transcriber.swift     a session's chunks, one at a time, as they close; settles the session
-      Transcribe.swift      one chunk: on-device times, the text model, alignment; bench
-      OpenRouter.swift, AppleTimes.swift, Align.swift, Refine.swift
+      Transcribe.swift      one chunk: voice, the clip, the two models, alignment; bench
+      Voice.swift           where someone is talking, with no model
+      LocalModel.swift      Apple's on-device recognizer, with a deadline; `within`
+      OpenRouter.swift      the remote model
+      Align.swift, Refine.swift
     Timeline/             reading a session out
       Render.swift          the timeline, whole or a stretch; markers; drawings set into the words
       Moment.swift          start, end, m3, -20m, 12:30

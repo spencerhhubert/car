@@ -18,14 +18,14 @@ import Foundation
 // it has none. OWL_ROOT in the environment puts everything in another folder
 // (the tests use it).
 public struct Config: Codable, Sendable {
-    /// The model that writes the words: any OpenRouter chat model that takes
-    /// audio. Gemini flash measured best for words; see the README.
-    public var textModel = "google/gemini-3-flash-preview"
-    /// Where word times come from: "apple" (the on-device recognizer, which
-    /// stamps every word from the sound itself) or "openrouter:<model>" (a
-    /// model asked for timestamped segments, only as good as its sense of
-    /// time).
-    public var timeSource = "apple"
+    /// The remote model, which writes the words: any OpenRouter chat model
+    /// that takes audio, or "" for none (the local model's words). Gemini
+    /// flash measured best; see docs/guide.md.
+    public var remoteModel = "google/gemini-3-flash-preview"
+    /// The local model, which keeps time (and writes the words when there is
+    /// no remote one): "apple", the on-device recognizer, or "none" (words are
+    /// spread over the voice and snapped to its onsets).
+    public var localModel = "apple"
     /// Microphone, by the device UID CoreAudio reports, or nil for the system
     /// default at the moment a session starts.
     public var inputUID: String?
@@ -101,8 +101,8 @@ public struct Config: Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
-        textModel = try c.decodeIfPresent(String.self, forKey: .textModel) ?? d.textModel
-        timeSource = try c.decodeIfPresent(String.self, forKey: .timeSource) ?? d.timeSource
+        remoteModel = try c.decodeIfPresent(String.self, forKey: .remoteModel) ?? d.remoteModel
+        localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel
         inputUID = try c.decodeIfPresent(String.self, forKey: .inputUID)
         inputName = try c.decodeIfPresent(String.self, forKey: .inputName)
         keys = try c.decodeIfPresent(Bool.self, forKey: .keys) ?? d.keys

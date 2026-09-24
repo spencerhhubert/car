@@ -99,8 +99,8 @@ final class Catalog: @unchecked Sendable {
             sound_seconds REAL,
             peak_db REAL,
             state TEXT NOT NULL,               -- recording, recorded, transcribed, silent, failed, lost
-            text_model TEXT,
-            time_source TEXT,
+            text_model TEXT,                   -- remote_model since version 2
+            time_source TEXT,                  -- local_model since version 2
             note TEXT,
             error TEXT,
             file INTEGER REFERENCES files(id),
@@ -157,7 +157,13 @@ final class Catalog: @unchecked Sendable {
     ]
 
     /// Versions of the schema, in order; `user_version` says how many ran.
-    private static let versions: [[String]] = [schema]
+    private static let versions: [[String]] = [
+        schema,
+        // A chunk's words come from the remote model and its times from the
+        // local one.
+        ["ALTER TABLE chunks RENAME COLUMN text_model TO remote_model",
+         "ALTER TABLE chunks RENAME COLUMN time_source TO local_model"],
+    ]
 
     private static func migrate(_ h: Handle) throws {
         let have = h.rows("PRAGMA user_version").first?.int("user_version") ?? 0

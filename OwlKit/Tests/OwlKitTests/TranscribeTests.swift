@@ -2,7 +2,7 @@ import Testing
 @testable import OwlKit
 
 @Suite struct AlignTests {
-    private func w(_ t: String, _ s: Double, _ e: Double) -> AppleTimes.Word { AppleTimes.Word(text: t, start: s, end: e) }
+    private func w(_ t: String, _ s: Double, _ e: Double) -> LocalModel.Word { LocalModel.Word(text: t, start: s, end: e) }
 
     @Test func matchesWordsAndPlacesTheRestBetween() {
         let timed = [w("okay", 0, 0.3), w("so", 0.4, 0.5), w("this", 0.6, 0.8), w("part", 0.9, 1.1)]

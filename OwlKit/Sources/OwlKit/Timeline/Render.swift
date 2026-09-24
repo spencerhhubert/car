@@ -37,8 +37,10 @@ public enum Render {
         head.append("\(chunks.count) chunk\(chunks.count == 1 ? "" : "s") of sound (\(heard) with words\(open > 0 ? ", \(open) still to come" : ""))")
         if !markers.isEmpty { head.append("\(markers.count) marker\(markers.count == 1 ? "" : "s")") }
         head.append("\(shots.count) pictures")
-        let models = Set(chunks.compactMap(\.textModel)).sorted()
-        if !models.isEmpty { head.append("words by \(models.joined(separator: ", "))") }
+        let remote = Set(chunks.compactMap(\.remoteModel)).sorted()
+        if !remote.isEmpty { head.append("words by \(remote.joined(separator: ", "))") }
+        let local = Set(chunks.compactMap(\.localModel)).sorted()
+        if !local.isEmpty { head.append("times by \(local.joined(separator: ", "))") }
         lines.append(head.joined(separator: " · "))
 
         switch s.state {
@@ -58,8 +60,8 @@ public enum Render {
             lines += ["", "This is \(about.map { "\($0), " } ?? "")\(span) of the session. " +
                       "More: `\(owl) session \(id) --from start`, or `--from m<marker>`, `--from -30m`."]
         }
-        for c in chunks where c.note != nil && c.startMs < to && (c.endMs ?? .max) > from {
-            if c.note != "no speech heard" { lines += ["", "Chunk \(c.n) (\(clock(c.startMs))): \(c.note!)"] }
+        for c in chunks where c.note != nil && c.state != .silent && c.startMs < to && (c.endMs ?? .max) > from {
+            lines += ["", "Chunk \(c.n) (\(clock(c.startMs))): \(c.note!)"]
         }
         lines += ["", """
             How to read it: each line is a moment, [minutes:seconds.ms] from the start, on one clock for words and \

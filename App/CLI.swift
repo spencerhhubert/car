@@ -16,7 +16,7 @@ import OwlKit
 //   owl status           what is being recorded or transcribed now; exit 3 if anything
 //   owl usage            what transcription has cost
 //   owl pointer <id|last>  the line that hands a whole session to an agent
-//   owl transcribe <id|last> [--again|--all] [--text-model M] [--time-source S]
+//   owl transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
 //   owl bench <id|last> [--chunk N] [--model M]
 //   owl models | config [key value] | render <id|last> | guide
 //
@@ -110,8 +110,8 @@ enum CLI {
                 }
                 defer { lock.release() }
                 var o = Transcribe.Options()
-                if let m = flag(rest, "--text-model") { o.textModel = m }
-                if let s = flag(rest, "--time-source") { o.timeSource = s }
+                if let m = flag(rest, "--remote-model") { o.remoteModel = m == "none" ? "" : m }
+                if let m = flag(rest, "--local-model") { o.localModel = m }
                 let t = Transcriber(id: id, options: o)
                 await t.addUnsettled(again: rest.contains("--again"), all: rest.contains("--all"))
                 let out = await t.finish()
@@ -119,7 +119,7 @@ enum CLI {
             case "bench":
                 let id = try resolve(positional.first)
                 let n = flag(rest, "--chunk").flatMap(Int.init) ?? 1
-                print(try await Transcribe.bench(id, chunk: n, model: flag(rest, "--model") ?? Config.load().textModel))
+                print(try await Transcribe.bench(id, chunk: n, model: flag(rest, "--model") ?? Config.load().remoteModel))
             case "models":
                 guard let key = Config.openRouterKey else {
                     throw Failure("no OpenRouter key: set it from the menu, or OPENROUTER_API_KEY")
@@ -131,15 +131,15 @@ enum CLI {
                 var c = Config.load()
                 if rest.count >= 2 {
                     switch rest[0] {
-                    case "textModel": c.textModel = rest[1]
-                    case "timeSource": c.timeSource = rest[1]
+                    case "remoteModel": c.remoteModel = rest[1] == "none" ? "" : rest[1]
+                    case "localModel": c.localModel = rest[1]
                     case "keys": c.keys = rest[1] == "true"
                     default: throw Failure("unknown setting \(rest[0])")
                     }
                     c.save()
                 }
-                print("textModel   \(c.textModel)")
-                print("timeSource  \(c.timeSource)")
+                print("remoteModel \(c.remoteModel.isEmpty ? "none" : c.remoteModel)")
+                print("localModel  \(c.localModel)")
                 print("input       \(c.inputName ?? "system default")")
                 print("keys        \(c.keys)")
                 print("key         \(Config.openRouterKey == nil ? "missing" : "present")")
@@ -160,7 +160,7 @@ enum CLI {
     }
 
     /// Flags followed by a value.
-    private static let valued: Set<String> = ["--from", "--to", "--text-model", "--time-source", "--chunk", "--model"]
+    private static let valued: Set<String> = ["--from", "--to", "--remote-model", "--local-model", "--chunk", "--model"]
 
     /// Before reading a session: wait while its lock holder transcribes it
     /// (up to `upTo`, or all of it once it stopped), and take over a session
@@ -249,9 +249,9 @@ enum CLI {
           \(owl) words <id|last> [--from M] [--to M]        every word, JSON lines
           \(owl) sessions | status | usage
           \(owl) pointer <id|last>
-          \(owl) transcribe <id|last> [--again|--all] [--text-model M] [--time-source apple|openrouter:M]
+          \(owl) transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
           \(owl) bench <id|last> [--chunk N] [--model M]
-          \(owl) models | config [textModel|timeSource|keys VALUE] | render <id|last> | guide
+          \(owl) models | config [remoteModel|localModel|keys VALUE] | render <id|last> | guide
 
         M: start, end, m3 (marker 3), -20m (before the end), 12:30 (session clock).
         ⌘⇧R starts and stops a session; ⌥ ⌥ sets a marker. `\(owl) guide` for the rest.

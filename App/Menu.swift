@@ -25,26 +25,34 @@ extension App {
         menu.addItem(item("Sessions folder", #selector(openSessions)))
         menu.addItem(.separator())
 
-        let text = NSMenu()
-        for m in models.isEmpty ? [OpenRouter.Model(id: config.textModel, name: config.textModel)] : models {
-            let i = item(m.id, #selector(pickTextModel(_:)))
+        // The remote model writes the words; the local model keeps time, and
+        // writes the words when there is no remote one.
+        let remote = NSMenu()
+        let none = item("none: the local model's words", #selector(pickRemoteModel(_:)))
+        none.representedObject = ""
+        none.state = config.remoteModel.isEmpty ? .on : .off
+        remote.addItem(none)
+        remote.addItem(.separator())
+        let known = models.isEmpty && !config.remoteModel.isEmpty
+            ? [OpenRouter.Model(id: config.remoteModel, name: config.remoteModel)] : models
+        for m in known {
+            let i = item(m.id, #selector(pickRemoteModel(_:)))
             i.representedObject = m.id
-            i.state = m.id == config.textModel ? .on : .off
-            text.addItem(i)
+            i.state = m.id == config.remoteModel ? .on : .off
+            remote.addItem(i)
         }
-        text.addItem(.separator())
-        text.addItem(item("Refresh list", #selector(refreshModels)))
-        menu.addItem(submenu("Words: \(config.textModel)", text))
+        remote.addItem(.separator())
+        remote.addItem(item("Refresh list", #selector(refreshModels)))
+        menu.addItem(submenu("Remote model: \(config.remoteModel.isEmpty ? "none" : config.remoteModel)", remote))
 
-        let times = NSMenu()
-        for (title, value) in [("on this Mac (Apple)", "apple"),
-                               ("\(config.textModel) keeps time", "openrouter:\(config.textModel)")] {
-            let i = item(title, #selector(pickTimeSource(_:)))
+        let local = NSMenu()
+        for (title, value) in [("Apple, on this Mac", "apple"), ("none: times from the voice alone", "none")] {
+            let i = item(title, #selector(pickLocalModel(_:)))
             i.representedObject = value
-            i.state = value == config.timeSource ? .on : .off
-            times.addItem(i)
+            i.state = value == config.localModel ? .on : .off
+            local.addItem(i)
         }
-        menu.addItem(submenu("Times: \(config.timeSource)", times))
+        menu.addItem(submenu("Local model: \(config.localModel == "apple" ? "Apple" : "none")", local))
 
         let mics = NSMenu()
         inputs = AudioInputs.all()
@@ -134,15 +142,14 @@ extension App {
         NSWorkspace.shared.open(FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
             .appending(path: "Logs/\(Config.name).log"))
     }
-    @objc private func pickTextModel(_ sender: NSMenuItem) {
+    @objc private func pickRemoteModel(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
-        config.textModel = id
-        if config.timeSource.hasPrefix("openrouter:") { config.timeSource = "openrouter:\(id)" }
+        config.remoteModel = id
         config.save()
     }
-    @objc private func pickTimeSource(_ sender: NSMenuItem) {
+    @objc private func pickLocalModel(_ sender: NSMenuItem) {
         guard let v = sender.representedObject as? String else { return }
-        config.timeSource = v
+        config.localModel = v
         config.save()
     }
     @objc private func pickInput(_ sender: NSMenuItem) {

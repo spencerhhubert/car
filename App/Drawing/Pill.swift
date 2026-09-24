@@ -4,17 +4,23 @@ import CarKit
 import SwiftUI
 
 // The pill at the bottom of the screen. A session runs for hours, so while it
-// records the pill is a dot (🏎️ ●, and the tool in hand if there is one), and
-// opens into the toolbar while the pointer is on it: the time and level, the
-// pen, arrow, circle and rectangle, the inks, and wiping the drawings. It
-// says a word when something happens ("marker 3 · copied"). Only ⌘ ⌥ ⌥ stops
-// a session; discarding one is in the menu, behind a question. When nothing
-// is recording it says how the last transcription went, then goes.
+// records the pill is a dot (🏎️ ●, and the tool in hand if there is one)
+// that brightens with the sound coming in, so a glance says the microphone
+// hears you. It opens into the toolbar while the pointer is on it: the time
+// and level, pause and stop, the pen, arrow, circle and rectangle, the inks,
+// and the eraser, which wipes the drawings off the screen (never the
+// session). Every button lights up under the pointer and says what it does
+// if the pointer rests on it. It says a word when something happens
+// ("marker 3 · copied"). Discarding a session is in the menu, behind a
+// question. When nothing is recording it says how the last transcription
+// went, then goes.
 //
 // It sits over whatever app is in use, so it never takes focus (a
 // non-activating panel), joins every space, sits above the drawing layer so
 // it can always be reached, and keeps to the screen the mouse is on. It is
-// torn down rather than hidden when not needed, and ticks only while open.
+// torn down rather than hidden when not needed, and ticks only while
+// recording (not while paused): ten times a second, redrawing only what
+// changed.
 @MainActor
 final class Pill {
     enum Phase: Equatable {
@@ -32,6 +38,8 @@ final class Pill {
         var open = false
         /// A moment's word while recording.
         var note: String?
+        /// The session is paused: nothing is being recorded.
+        var paused = false
     }
 
     /// Ten times a second while the toolbar is open: kept apart so the
@@ -40,6 +48,9 @@ final class Pill {
     final class Meter {
         var elapsed: Double = 0
         var level: Float = -160
+        /// How loud the sound coming in is, 0 to 1 in tenths, falling
+        /// slowly: what the dot shows.
+        var voice: Double = 0
     }
 
     let model = Model()
@@ -47,6 +58,7 @@ final class Pill {
     /// Where the clock and the level come from while recording.
     var reading: (() -> (elapsed: Double, level: Float))?
     private let drawing: Drawing
+    private let actions: Actions
     private var panel: NSPanel?
     private var ticker: Timer?
     private var follower: Timer?
@@ -54,16 +66,24 @@ final class Pill {
     private var noteTask: Task<Void, Never>?
     private var watch: Task<Void, Never>?
 
-    init(drawing: Drawing) {
+    /// What the toolbar's session buttons do.
+    struct Actions {
+        let pause: () -> Void
+        let stop: () -> Void
+    }
+
+    init(drawing: Drawing, actions: Actions) {
         self.drawing = drawing
+        self.actions = actions
         // A tool picked or put down changes the dot's size.
         watch = Task { [weak self] in
             for await _ in Observations({ drawing.tool == nil }) { self?.place(force: false) }
         }
     }
 
-    func show(_ phase: Phase) {
+    func show(_ phase: Phase, paused: Bool = false) {
         model.phase = phase
+        model.paused = paused
         if phase != .recording {
             model.open = false
             model.note = nil
@@ -127,15 +147,24 @@ final class Pill {
     }
 
     private func tick() {
-        let wanted = model.phase == .recording && model.open
+        let wanted = model.phase == .recording && !model.paused
         if !wanted {
             ticker?.invalidate()
             ticker = nil
+            meter.voice = 0
             return
         }
         guard ticker == nil else { return }
         let update = { [weak self] in
             guard let self, let r = self.reading?() else { return }
+            // Quiet (−48 dB) to speaking up (−18 dB), rising at once and
+            // falling over half a second, in tenths so the dot redraws only
+            // when it would look different.
+            let heard = min(1, max(0, (Double(r.level) + 48) / 30))
+            let voice = (max(heard, self.meter.voice * 0.75) * 10).rounded() / 10
+            if voice != self.meter.voice { self.meter.voice = voice }
+            // The clock and the level bar are only on the open toolbar.
+            guard self.model.open else { return }
             self.meter.elapsed = r.elapsed
             self.meter.level = r.level
         }
@@ -148,11 +177,11 @@ final class Pill {
     private var size: CGSize {
         switch model.phase {
         case .recording:
-            if model.open { return CGSize(width: 404, height: 52) }
-            if model.note != nil { return CGSize(width: 250, height: 34) }
-            return CGSize(width: drawing.tool == nil ? 60 : 84, height: 34)
+            if model.open { return Metrics.Pill.toolbar }
+            if model.note != nil { return Metrics.Pill.note }
+            return drawing.tool == nil ? Metrics.Pill.dot : Metrics.Pill.dotWithTool
         case .working, .said:
-            return CGSize(width: 300, height: 34)
+            return Metrics.Pill.message
         }
     }
 
@@ -168,7 +197,11 @@ final class Pill {
         p.becomesKeyOnlyIfNeeded = true
         p.isReleasedWhenClosed = false
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        p.contentView = PillHostingView(pill: self, rootView: PillView(model: model, meter: meter, drawing: drawing))
+        // car is never the app in front while the pill is used; without
+        // this, the buttons would never say what they do.
+        p.allowsToolTipsWhenApplicationIsInactive = true
+        p.contentView = PillHostingView(pill: self, rootView: PillView(model: model, meter: meter, drawing: drawing,
+                                                                        actions: actions))
         panel = p
     }
 
@@ -183,7 +216,7 @@ final class Pill {
         let area = screen.visibleFrame
         // While the pointer is on the pill it stays on its screen.
         let screenFrame = model.open ? (panel.screen?.visibleFrame ?? area) : area
-        let frame = NSRect(x: (screenFrame.midX - size.width / 2).rounded(), y: screenFrame.minY + 90,
+        let frame = NSRect(x: (screenFrame.midX - size.width / 2).rounded(), y: screenFrame.minY + Metrics.Pill.lift,
                            width: size.width, height: size.height)
         guard force || frame != panel.frame else { return }
         panel.setFrame(frame, display: true)
@@ -217,13 +250,14 @@ private final class PillHostingView: NSHostingView<PillView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-private struct PillView: View {
+struct PillView: View {
     let model: Pill.Model
     let meter: Pill.Meter
     let drawing: Drawing
+    let actions: Pill.Actions
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Spacing.s) {
             switch model.phase {
             case .recording:
                 if model.open { toolbar } else { dot }
@@ -233,7 +267,7 @@ private struct PillView: View {
             case .said(let text, let ok):
                 Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .font(.system(size: 14))
-                    .foregroundStyle(ok ? .green : .orange)
+                    .foregroundStyle(ok ? .green : Tint.failed)
                 message(text)
             }
         }
@@ -254,76 +288,150 @@ private struct PillView: View {
     @ViewBuilder
     private var dot: some View {
         Text("🏎️").font(.system(size: 15))
-        Circle().fill(.red).frame(width: 8, height: 8)
+        Light(meter: meter, paused: model.paused)
         if let tool = drawing.tool {
             Image(systemName: tool.symbol)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(drawing.ink.color)
+                .foregroundStyle(Tint.ink(drawing.ink))
         }
         if let note = model.note { message(note) }
     }
 
     @ViewBuilder
     private var toolbar: some View {
-        Text("🏎️").font(.system(size: 16)).help("recording: ⌘ ⌥ ⌥ stops, ⌥ ⌥ sets a marker, ⇧ ⌥ ⌥ copies what you just said")
-        MeterView(meter: meter)
-        Divider().frame(height: 26)
-        HStack(spacing: 2) {
-            ForEach(Tool.allCases, id: \.self) { toolButton($0) }
+        Text("🏎️").font(.system(size: 16))
+            .help("Recording. ⌘ ⌥ ⌥ stops, ⌥ ⌥ sets a marker, ⇧ ⌥ ⌥ copies what you just said.")
+        MeterView(meter: meter, paused: model.paused)
+        Divider().frame(height: 28)
+        HStack(spacing: Spacing.xxs) {
+            symbolButton(model.paused ? "play.fill" : "pause.fill",
+                         model.paused ? "Resume recording" : "Pause: record nothing until you resume. The session stays open.",
+                         action: actions.pause)
+            symbolButton("stop.fill", "Stop the session (⌘ ⌥ ⌥). It is kept, and its last words are transcribed.",
+                         action: actions.stop)
         }
-        HStack(spacing: 3) {
+        Divider().frame(height: 28)
+        HStack(spacing: Spacing.xxs) {
+            ForEach(Tool.allCases, id: \.self) { tool in
+                symbolButton(tool.symbol, tool.help, lit: drawing.tool == tool ? Tint.ink(drawing.ink) : nil) {
+                    drawing.pick(tool)
+                }
+            }
+        }
+        .disabled(model.paused)
+        HStack(spacing: Spacing.xxs) {
             ForEach(Ink.allCases, id: \.self) { inkButton($0) }
         }
-        Button { drawing.clear() } label: {
-            Image(systemName: "trash")
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 26, height: 26)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(drawing.marks.isEmpty ? .tertiary : .secondary)
-        .disabled(drawing.marks.isEmpty)
-        .help("wipe the drawings off the screen (the session keeps them)")
+        .disabled(model.paused)
+        symbolButton("eraser", "Wipe the drawings off the screen. The session keeps them.") { drawing.clear() }
+            .disabled(drawing.marks.isEmpty)
     }
 
-    private func toolButton(_ tool: Tool) -> some View {
-        let inHand = drawing.tool == tool
-        return Button { drawing.pick(tool) } label: {
-            Image(systemName: tool.symbol)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(inHand ? drawing.ink.color : Color.primary)
-                .frame(width: 26, height: 26)
-                .background(inHand ? drawing.ink.color.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 7))
-                .contentShape(Rectangle())
+    private func symbolButton(_ symbol: String, _ help: String, lit: Color? = nil,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: Metrics.Pill.symbol, weight: .semibold))
+                .foregroundStyle(lit ?? Color.primary)
         }
-        .buttonStyle(.plain)
-        .help(tool.help)
+        .buttonStyle(PillButtonStyle(lit: lit))
+        .help(help)
     }
 
     private func inkButton(_ ink: Ink) -> some View {
         let chosen = drawing.ink == ink
         return Button { drawing.ink = ink } label: {
             Circle()
-                .fill(ink.color)
-                .frame(width: 12, height: 12)
-                .padding(2.5)
+                .fill(Tint.ink(ink))
+                .frame(width: Metrics.Pill.ink, height: Metrics.Pill.ink)
+                .padding(3)
                 .overlay(Circle().strokeBorder(chosen ? Color.primary : .clear, lineWidth: 1.5))
-                .contentShape(Circle())
         }
-        .buttonStyle(.plain)
-        .help(ink.rawValue)
+        .buttonStyle(PillButtonStyle(size: Metrics.Pill.inkTarget, shape: .circle))
+        .help(ink.rawValue.capitalized)
+    }
+}
+
+/// A toolbar button: lit under the pointer, darker while pressed, and in a
+/// tool's ink while it is in hand, so where a click lands is always shown.
+private struct PillButtonStyle: ButtonStyle {
+    enum Shape { case rounded, circle }
+    var lit: Color? = nil
+    var size = Metrics.Pill.button
+    var shape = Shape.rounded
+
+    func makeBody(configuration: Configuration) -> some View {
+        Face(configuration: configuration, style: self)
+    }
+
+    private struct Face: View {
+        let configuration: Configuration
+        let style: PillButtonStyle
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            configuration.label
+                .frame(width: style.size, height: style.size)
+                .background { backdrop }
+                .contentShape(Rectangle())
+                .opacity(enabled ? 1 : 0.35)
+                .onHover { hovering = $0 }
+        }
+
+        @ViewBuilder
+        private var backdrop: some View {
+            switch style.shape {
+            case .rounded: RoundedRectangle(cornerRadius: Radius.button).fill(fill)
+            case .circle: Circle().fill(fill)
+            }
+        }
+
+        private var fill: Color {
+            if let lit = style.lit { return lit.opacity(configuration.isPressed ? 0.34 : 0.22) }
+            guard enabled else { return .clear }
+            if configuration.isPressed { return .primary.opacity(0.18) }
+            return hovering ? .primary.opacity(0.1) : .clear
+        }
+    }
+}
+
+/// The dot: red, brightening and glowing with the sound coming in; a pause
+/// sign while paused.
+private struct Light: View {
+    let meter: Pill.Meter
+    let paused: Bool
+
+    var body: some View {
+        if paused {
+            Image(systemName: "pause.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: Metrics.Pill.light, height: Metrics.Pill.light)
+        } else {
+            let v = meter.voice
+            Circle()
+                .fill(Tint.recording)
+                .frame(width: Metrics.Pill.light, height: Metrics.Pill.light)
+                .opacity(0.45 + 0.55 * v)
+                .scaleEffect(1 + 0.25 * v)
+                .shadow(color: Tint.recording.opacity(0.9 * v), radius: 1 + 4 * v)
+                .animation(.easeOut(duration: 0.1), value: v)
+        }
     }
 }
 
 private struct MeterView: View {
     let meter: Pill.Meter
+    let paused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(Self.clock(meter.elapsed))
+            Text(paused ? "Paused" : Self.clock(meter.elapsed))
                 .font(TextStyle.hud.font)
                 .monospacedDigit()
-            LevelBar(db: meter.level)
+                .foregroundStyle(paused ? .secondary : .primary)
+            LevelBar(db: paused ? -160 : meter.level)
         }
         .frame(width: 60, alignment: .leading)
     }
@@ -354,14 +462,10 @@ private struct LevelBar: View {
 private extension Tool {
     var help: String {
         switch self {
-        case .pen: "pen: draw freehand; stays in hand until clicked again, Esc, or a click"
-        case .arrow: "arrow: point at something (⇧ for 45°)"
-        case .circle: "circle: ring something (⇧ for a true circle)"
-        case .rectangle: "rectangle: box something in (⇧ for a square)"
+        case .pen: "Pen: draw freehand. Stays in hand until clicked again, Esc, or a click."
+        case .arrow: "Arrow: point at something (⇧ for 45°)."
+        case .circle: "Circle: ring something (⇧ for a true circle)."
+        case .rectangle: "Rectangle: box something in (⇧ for a square)."
         }
     }
-}
-
-private extension Ink {
-    var color: Color { Color(cgColor: cgColor) }
 }

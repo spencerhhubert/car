@@ -33,6 +33,8 @@ enum Radius {
     static let medium: CGFloat = 6
     /// Panels laid over content: the picture viewer's caption.
     static let large: CGFloat = 10
+    /// A button on the pill.
+    static let button: CGFloat = 8
 }
 
 /// The few colors that mean something. Everything else is the system's
@@ -140,6 +142,26 @@ enum Metrics {
     static let smallPicture = CGSize(width: 56, height: 36)
     /// The grey lines holding the place of words to come.
     static let pendingLines: (long: CGFloat, short: CGFloat, height: CGFloat) = (260, 170, 8)
+
+    /// The pill over other apps, by what it is showing: the dot while
+    /// recording (wider with a tool in hand), a word, the toolbar under the
+    /// pointer, and how something went.
+    enum Pill {
+        static let dot = CGSize(width: 60, height: 34)
+        static let dotWithTool = CGSize(width: 84, height: 34)
+        static let note = CGSize(width: 250, height: 34)
+        static let toolbar = CGSize(width: 536, height: 56)
+        static let message = CGSize(width: 300, height: 34)
+        /// Up from the bottom of the screen's visible area.
+        static let lift: CGFloat = 90
+        /// A toolbar button, its symbol, and an ink's swatch in its target.
+        static let button: CGFloat = 32
+        static let symbol: CGFloat = 15
+        static let ink: CGFloat = 16
+        static let inkTarget: CGFloat = 26
+        /// The dot, at rest.
+        static let light: CGFloat = 9
+    }
 }
 
 /// The words car writes about time, the one way everywhere: 12-hour, lower

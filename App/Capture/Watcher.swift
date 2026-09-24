@@ -56,10 +56,29 @@ final class Watcher {
     init(session: Session) { self.session = session }
 
     func start(sound: SoundQuality) {
-        listening = true
         writing = true
         session.event("session", ["phase": "start", "accessibility": AXIsProcessTrusted(),
                                   "screen": Screenshot.hasPermission, "sound": sound.rawValue])
+        listen()
+    }
+
+    /// Stop watching until `resume`, writing what is still on its way.
+    func pause() {
+        guard listening else { return }
+        flushTyping()
+        stopListening()
+        session.event("session", ["phase": "pause"])
+    }
+
+    func resume() {
+        guard writing, !listening else { return }
+        session.event("session", ["phase": "resume"])
+        last = Reading()
+        listen()
+    }
+
+    private func listen() {
+        listening = true
         activation = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -79,7 +98,7 @@ final class Watcher {
     /// flushed, the last click's picture), then the end. Waits at most two
     /// seconds for stragglers.
     func finish() async {
-        guard listening else { return }
+        guard writing else { return }
         let end = session.now
         flushTyping()
         stopListening()

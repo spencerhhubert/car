@@ -172,8 +172,14 @@ public enum Render {
         let app = e["app"] as? String ?? ""
         switch e["kind"] as? String ?? "" {
         case "session":
-            let sound = (e["sound"] as? String).flatMap(SoundQuality.init(rawValue:)).map { ", sound kept at \($0.summary)" }
-            return "session \(e["phase"] ?? "")" + (sound ?? "")
+            switch e["phase"] as? String {
+            case "pause": return "paused: nothing recorded until it resumes"
+            case "resume": return "resumed"
+            default:
+                let sound = (e["sound"] as? String).flatMap(SoundQuality.init(rawValue:)).map { ", sound kept at \($0.summary)" }
+                return "session \(e["phase"] ?? "")" + (sound ?? "")
+            }
+        case "microphone": return "microphone → \(e["name"] ?? "")"
         case "app": return "app → \(app)"
         case "window":
             var s = "window \(app)" + q(e["title"])

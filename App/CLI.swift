@@ -157,7 +157,7 @@ enum CLI {
                 }
                 print("remoteModel \(c.remoteModel.isEmpty ? "none" : c.remoteModel)")
                 print("localModel  \(c.localModel)")
-                print("input       \(c.inputName ?? "system default")")
+                print("microphones \((c.microphones.map(\.name) + ["system default"]).joined(separator: ", then "))")
                 print("soundQuality \(c.soundQuality.rawValue) (\(c.soundQuality.summary))")
                 print("dictationPause \(Int(c.dictationPause)) s")
                 print("keys        \(c.keys)")

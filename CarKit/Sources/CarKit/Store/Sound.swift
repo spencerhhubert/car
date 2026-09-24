@@ -46,12 +46,16 @@ public enum SoundQuality: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// What it is for, and what it costs, in a few words.
+    /// "Low", "Medium", "High"
+    public var name: String { rawValue.capitalized }
+
+    /// What it is for, and what it costs: "good enough to publish, as in a
+    /// video; about 70 MB an hour".
     public var purpose: String {
         switch self {
-        case .low: "Enough for the words, and small: about 14 MB an hour."
-        case .medium: "Good enough to publish, as in a video: about 70 MB an hour."
-        case .high: "Lossless, the microphone exactly as it came: about 300 MB an hour."
+        case .low: "enough for the words, and small; about 14 MB an hour"
+        case .medium: "good enough to publish, as in a video; about 70 MB an hour"
+        case .high: "lossless, the microphone exactly as it came; about 300 MB an hour"
         }
     }
 }

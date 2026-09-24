@@ -60,7 +60,8 @@ kind of action has one symbol, set in `Script.Action.Kind.symbol`
 `macwindow`, a page `globe`, Finder `folder`, a click `cursorarrow.click`,
 a shortcut `command`, typing `keyboard`, a selection `text.cursor`, a
 scroll `arrow.up.and.down`, a drawing `pencil.tip` (in its ink), a wipe
-`trash`, an app's own report `text.page`, a dictation `text.quote`.
+`eraser`, an app's own report `text.page`, a dictation `text.quote`, a pause
+`pause.circle`, a resume `play.circle`, a microphone `mic`.
 
 ## Motion
 

@@ -26,10 +26,11 @@ public struct Config: Codable, Sendable {
     /// no remote one): "apple", the on-device recognizer, or "none" (words are
     /// spread over the voice and snapped to its onsets).
     public var localModel = "apple"
-    /// Microphone, by the device UID CoreAudio reports, or nil for the system
-    /// default at the moment a session starts.
-    public var inputUID: String?
-    public var inputName: String?
+    /// The microphones to record from, most wanted first. The first one
+    /// connected is used; car moves down the list when it goes away or goes
+    /// silent, and back up as soon as one higher up is back. With none of
+    /// them connected (or none listed), the system default.
+    public var microphones: [Microphone] = []
     /// How the sound is kept (Sound.swift). Transcription hears the same
     /// whichever it is.
     public var soundQuality = SoundQuality.low
@@ -41,6 +42,25 @@ public struct Config: Codable, Sendable {
     public var keys = !Config.isDev
 
     public init() {}
+
+    /// A microphone, by the UID CoreAudio gives it (the same across replugs
+    /// and restarts), and the name it had when it was listed.
+    public struct Microphone: Codable, Sendable, Equatable, Identifiable {
+        public let uid: String
+        public let name: String
+        public var id: String { uid }
+
+        public init(uid: String, name: String) {
+            self.uid = uid
+            self.name = name
+        }
+    }
+
+    /// The microphone to record from now: the first of `list` that is
+    /// `connected` and has not gone `silent`, or nil for the system default.
+    public static func microphone(from list: [Microphone], connected: Set<String>, silent: Set<String>) -> Microphone? {
+        list.first { connected.contains($0.uid) && !silent.contains($0.uid) }
+    }
 
     /// The app this binary is in. Run as a command, it is reached through a
     /// symlink, which Bundle.main does not follow.
@@ -112,8 +132,7 @@ public struct Config: Codable, Sendable {
         let d = Config()
         remoteModel = try c.decodeIfPresent(String.self, forKey: .remoteModel) ?? d.remoteModel
         localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel
-        inputUID = try c.decodeIfPresent(String.self, forKey: .inputUID)
-        inputName = try c.decodeIfPresent(String.self, forKey: .inputName)
+        microphones = try c.decodeIfPresent([Microphone].self, forKey: .microphones) ?? d.microphones
         soundQuality = try c.decodeIfPresent(SoundQuality.self, forKey: .soundQuality) ?? d.soundQuality
         dictationPause = try c.decodeIfPresent(Double.self, forKey: .dictationPause) ?? d.dictationPause
         keys = try c.decodeIfPresent(Bool.self, forKey: .keys) ?? d.keys

@@ -11,15 +11,20 @@ import CarKit
 // in, so chunks line up with the events to the millisecond however long the
 // session runs.
 //
-// It keeps itself going. A microphone that disappears or changes (headphones
-// connecting), and the Mac going to sleep and waking, close the chunk and
-// reopen the input: the chosen device, or the system default while that one
-// is gone. So does a microphone that is open and sends nothing (another app
-// took the camera it is part of): after `stall` seconds without a buffer it
-// is reopened, and after two such tries the system default is used for the
-// rest of the session, with a word to the person each time. The engine is
-// started and stopped on the mic's own queue, since a Bluetooth input can
-// take a second to open; nothing here waits on the main thread.
+// Which microphone: the first of the person's list (Config.microphones) that
+// is connected and has not gone silent, or the system default when none is.
+// It keeps itself going, and keeps to that rule. A microphone that
+// disappears, one higher on the list that is plugged back in, the default
+// changing, and the Mac waking from sleep all close the chunk and reopen the
+// input on whichever the rule picks now. So does a microphone that is open
+// and sends nothing (another app took the camera it is part of): after
+// `stall` seconds without a buffer it is reopened, and after two such tries
+// it counts as silent and the next one down is used, until it is unplugged
+// and plugged back in, or the session is paused and resumed. The person is
+// told each time it moves, and the session records which microphone every
+// stretch came from. The engine is started and stopped on the mic's own
+// queue, since a Bluetooth input can take a second to open; nothing here
+// waits on the main thread.
 //
 // AVAudioEngine rather than AVAudioRecorder so the input device can be chosen:
 // on a Mac with headphones, a webcam and an interface plugged in, the system
@@ -50,7 +55,8 @@ final class Mic: @unchecked Sendable {
 
     private let onOpen: @Sendable (Chunk) -> Void
     private let onClose: @Sendable (Chunk) -> Void
-    private let onTrouble: @Sendable (String) -> Void
+    private let onMicrophone: @Sendable (String) -> Void
+    private let onNote: @Sendable (String) -> Void
     private let control = DispatchQueue(label: "car.mic")
 
     // Under `lock`, touched from the tap's thread.
@@ -67,8 +73,14 @@ final class Mic: @unchecked Sendable {
 
     // On `control`.
     private var dir: URL?
-    private var uid: String?
+    private var order: [Config.Microphone] = []
     private var quality = SoundQuality.low
+    /// Listed microphones that sent nothing, passed over until they are
+    /// plugged in again.
+    private var silent: Set<String> = []
+    /// The device open now, and its UID when it is one on the list.
+    private var opened: (id: AudioDeviceID, listed: Config.Microphone?)?
+    private var devicesWatch: AudioObjectPropertyListenerBlock?
     private var running = false
     private var engine: AVAudioEngine?
     private var engineWatch: NSObjectProtocol?
@@ -78,14 +90,15 @@ final class Mic: @unchecked Sendable {
     private var watchdog: DispatchSourceTimer?
     /// Reopens because nothing arrived, since sound last did.
     private var stalls = 0
-    /// The chosen device sent nothing: the system default from here on.
-    private var fallBack = false
 
+    /// `onMicrophone` hears the name of each microphone as it starts being
+    /// recorded from; `onNote`, in words for the person, why it moved.
     init(onOpen: @escaping @Sendable (Chunk) -> Void, onClose: @escaping @Sendable (Chunk) -> Void,
-         onTrouble: @escaping @Sendable (String) -> Void) {
+         onMicrophone: @escaping @Sendable (String) -> Void, onNote: @escaping @Sendable (String) -> Void) {
         self.onOpen = onOpen
         self.onClose = onClose
-        self.onTrouble = onTrouble
+        self.onMicrophone = onMicrophone
+        self.onNote = onNote
     }
 
     /// Latest level in dBFS.
@@ -98,18 +111,30 @@ final class Mic: @unchecked Sendable {
 
     static var permissionGranted: Bool { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized }
 
-    /// Start recording into `dir`, from the device with `uid` (nil: the
-    /// system default), at `quality`.
-    func start(into dir: URL, uid: String?, quality: SoundQuality) async throws {
+    /// The microphone the rule picks from `order` now, by name: what a
+    /// session starting now records from first.
+    static func first(of order: [Config.Microphone]) -> String {
+        let devices = AudioInputs.all()
+        return Config.microphone(from: order, connected: Set(devices.map(\.uid)), silent: [])?.name
+            ?? AudioInputs.systemDefault().flatMap { id in devices.first { $0.id == id }?.name } ?? "system default"
+    }
+
+    /// Start recording into `dir`, from the first microphone of `order`
+    /// that is there, at `quality`.
+    func start(into dir: URL, order: [Config.Microphone], quality: SoundQuality) async throws {
         try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
             control.async {
                 self.dir = dir
-                self.uid = uid
+                self.order = order
                 self.quality = quality
+                self.stalls = 0
+                self.silent = []
+                self.opened = nil
                 do {
                     try self.open()
                     self.running = true
                     self.watchSleep()
+                    self.watchDevices()
                     self.watchForSound()
                     done.resume()
                 } catch {
@@ -131,6 +156,7 @@ final class Mic: @unchecked Sendable {
                 self.running = false
                 self.watchdog?.cancel()
                 self.watchdog = nil
+                self.unwatchDevices()
                 for o in self.sleepWatch { NSWorkspace.shared.notificationCenter.removeObserver(o) }
                 self.sleepWatch = []
                 self.shut()
@@ -147,7 +173,8 @@ final class Mic: @unchecked Sendable {
         let input = engine.inputNode
         // Set before the format is read: choosing the device changes the
         // format the node reports.
-        let chosen = (fallBack ? nil : uid.flatMap { AudioInputs.device(withUID: $0)?.id }) ?? AudioInputs.systemDefault()
+        let device = pick()
+        let chosen = device?.id
         if let unit = input.audioUnit, var id = chosen {
             let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
                                               &id, UInt32(MemoryLayout<AudioDeviceID>.size))
@@ -191,6 +218,54 @@ final class Mic: @unchecked Sendable {
         lastOpen = ProcessInfo.processInfo.systemUptime
         Log.line("mic open device=\(chosen.map(String.init) ?? "default") in=\(Int(format.sampleRate))Hz/\(format.channelCount)ch " +
                  "kept=\(quality.rawValue)")
+        if let device, device.id != opened?.id {
+            let moved = opened != nil
+            opened = (device.id, device.listed)
+            onMicrophone(device.name)
+            if moved { onNote("recording from \(device.name)") }
+        }
+    }
+
+    /// The device the rule picks now: the first listed microphone that is
+    /// connected and not silent, else the system default.
+    private func pick() -> (id: AudioDeviceID, name: String, listed: Config.Microphone?)? {
+        let devices = AudioInputs.all()
+        if let m = Config.microphone(from: order, connected: Set(devices.map(\.uid)), silent: silent),
+           let d = devices.first(where: { $0.uid == m.uid }) {
+            return (d.id, d.name, m)
+        }
+        guard let id = AudioInputs.systemDefault() else { return nil }
+        return (id, devices.first { $0.id == id }?.name ?? "the system default", nil)
+    }
+
+    /// Microphones coming and going, and the default changing: reopen when
+    /// the rule now picks another. A silent one that was unplugged gets
+    /// another chance when it is back.
+    private func watchDevices() {
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.devicesChanged() }
+        for selector in [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice] {
+            var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+                                                  mElement: kAudioObjectPropertyElementMain)
+            AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, control, block)
+        }
+        devicesWatch = block
+    }
+
+    private func unwatchDevices() {
+        guard let block = devicesWatch else { return }
+        for selector in [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice] {
+            var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+                                                  mElement: kAudioObjectPropertyElementMain)
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, control, block)
+        }
+        devicesWatch = nil
+    }
+
+    private func devicesChanged() {
+        guard running else { return }
+        silent.formIntersection(AudioInputs.all().map(\.uid))
+        guard let target = pick(), target.id != opened?.id else { return }
+        reopen("\(target.name) is the one to use now")
     }
 
     /// Stop the engine and close the chunk. Releasing the engine is what
@@ -259,22 +334,24 @@ final class Mic: @unchecked Sendable {
 
     private func checkForSound() {
         guard running, engine != nil, !reopening else { return }
-        let silent = ProcessInfo.processInfo.systemUptime - lock.withLock { lastSound }
-        guard silent > Mic.stall else {
-            if silent < 1 { stalls = 0 }
+        let quietFor = ProcessInfo.processInfo.systemUptime - lock.withLock { lastSound }
+        guard quietFor > Mic.stall else {
+            if quietFor < 1 { stalls = 0 }
             return
         }
         stalls += 1
         // A microphone that stays dead is tried again twice a minute, not
         // every few seconds all day.
         guard stalls < 6 || stalls % 15 == 0 else { return }
-        if stalls > 2, uid != nil, !fallBack {
-            fallBack = true
-            onTrouble("the microphone sends no sound; recording from the system default")
+        let name = opened?.listed?.name ?? "the microphone"
+        if stalls > 2, let listed = opened?.listed, !silent.contains(listed.uid) {
+            silent.insert(listed.uid)
+            stalls = 0
+            onNote("\(name) sends no sound; moving down the list")
         } else if stalls == 1 {
-            onTrouble("the microphone sends no sound; opening it again")
+            onNote("\(name) sends no sound; opening it again")
         }
-        reopen("no sound for \(Int(silent)) s")
+        reopen("no sound for \(Int(quietFor)) s")
     }
 
     // MARK: - the sound, on the tap's thread

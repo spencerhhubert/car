@@ -98,9 +98,12 @@ extension Script.Action.Kind {
         case .select: "text.cursor"
         case .scroll: "arrow.up.and.down"
         case .mark: "pencil.tip"
-        case .clear: "trash"
+        case .clear: "eraser"
         case .desk: "text.page"
         case .dictation: "text.quote"
+        case .pause: "pause.circle"
+        case .resume: "play.circle"
+        case .microphone: "mic"
         }
     }
 }

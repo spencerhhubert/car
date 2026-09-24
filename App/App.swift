@@ -90,6 +90,7 @@ final class App: NSObject, NSApplicationDelegate {
     @objc func showWindow() { open(nil) }
     @objc func showSettings() { open(.settings) }
     @objc func toggleSession() { recorder.toggle() }
+    @objc func togglePause() { recorder.togglePause() }
     @objc func setMarker() { recorder.marker() }
     @objc func discardSession() { recorder.discard() }
 

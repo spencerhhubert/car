@@ -21,9 +21,17 @@ session. The keys need Accessibility; Settings turns them off and on.
 
 A session is meant to run for hours: start it when you sit down, stop it when
 you are done. While it runs, a dot at the bottom of the screen (🏎️ ●) says
-so, and opens into the toolbar while the pointer is on it: the time and the
-level, the drawing tools, and the bin. The 🏎️ menu has *Stop Session*,
-*Set Marker* and *Discard Session…* too.
+so, and brightens with the sound coming in, so a glance says the microphone
+hears you. It opens into the toolbar while the pointer is on it: the time and
+the level, pause and stop, the drawing tools and inks, and the eraser. Every
+button lights up under the pointer and says what it does if the pointer
+rests on it. The 🏎️ menu has *Stop Session*, *Pause Session*, *Set Marker*
+and *Discard Session…* too.
+
+Paused, nothing is recorded (no sound, no actions, no pictures) and the
+microphone is let go, until you resume; the session stays open, its clock
+keeps time, and markers still work. The timeline says `paused` and `resumed`
+where it happened.
 
 Nothing plays, and nothing is uploaded except the sound to the transcription
 model you chose, a chunk at a time.
@@ -65,7 +73,7 @@ agent. Where the words are still to come, the row says so; a session being
 recorded reads live and grows at the bottom.
 
 Settings is the gear at the foot of the sidebar (⌘,): the models, the key,
-the microphone, quick dictation's pause, the keys, what transcription has
+the microphones, the sound's quality, quick dictation's pause, the keys, what transcription has
 cost, what car keeps on the disk, the permissions, and which build this is.
 
 Closing the window leaves car running, and recording if it was. The 🏎️ in
@@ -85,7 +93,8 @@ A drawing is a gesture made while talking, not a note left on the screen: it
 holds for six seconds and fades over three. When what it was drawn on changes
 a lot (another tab, a scroll, a model turned), it fades in half a second. car
 watches the screen under each drawing with a small, slow capture while
-drawings are up, and not at all otherwise. The bin wipes them all at once.
+drawings are up, and not at all otherwise. The eraser wipes them all at
+once; the session keeps them.
 
 Each drawing is a mark, numbered in the order drawn: *red circle 1*, *blue
 arrow 2*. It is recorded with what it was drawn on, set into the words at the
@@ -137,16 +146,23 @@ when asked for it. A crash loses at most the chunk being written.
 The microphone is recorded as chunks of about three minutes, each cut at the
 first pause after that (four minutes at most), so each is transcribed while
 the next records. A marker cuts one on the spot. Each chunk is stamped on the
-session clock from the moment its first sample arrived. The microphone
-reopens by itself when it changes or disappears (headphones connecting),
-when the Mac wakes from sleep, and when it is open but sends nothing for
-four seconds (another app took the camera it belongs to). If the microphone
-chosen still sends nothing after two tries, the session carries on with the
-system default, and the pill says so each time.
+session clock from the moment its first sample arrived.
+
+Which microphone: Settings → Microphones is a list in order. car records
+from the first one on it that is connected; when that one is unplugged it
+moves to the next, not to whatever the Mac's default is, and when one higher
+up is plugged back in it moves back up, cutting the chunk there. Below the
+list is always the system default, for when none of them is connected. A
+microphone that is open but sends nothing for four seconds (another app took
+the camera it belongs to) is opened again, and after two tries it is passed
+over for the next one down, until it is unplugged and plugged back in. The
+pill says so each time it moves, and the timeline says which microphone
+every stretch came from (`microphone → Wireless Lav`). The microphone also
+reopens when the Mac wakes from sleep.
 
 ## Sound quality
 
-Settings → Recording → Sound picks how a session keeps its sound, from the
+Settings → Recording → Quality picks how a session keeps its sound, from the
 next session on:
 
 - **Low**: 16 kHz mono AAC, about 14 MB an hour. Enough for the words.

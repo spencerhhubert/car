@@ -5,44 +5,56 @@ import CarKit
 // time; the watcher; the drawing layer's marks; and the transcriber, which
 // works through the chunks as they close, so by the time a marker is set
 // most of what came before it already has its words. There is at most one.
+//
+// Paused, nothing is recorded: the microphone is let go (another app can
+// have it), the watcher stops watching, and the drawings go. The session,
+// its clock and its markers carry on, and resuming picks it all up again.
 @MainActor
 final class Recording {
     let session: Session
     let transcriber: Transcriber
+    private let config: Config
     private let mic: Mic
     private let watcher: Watcher
     private let drawing: Drawing
+    /// Nothing is being recorded until `resume`.
+    private(set) var paused = false
+    /// A pause or a resume is under way.
+    private(set) var changing = false
 
-    private init(session: Session, mic: Mic, transcriber: Transcriber, drawing: Drawing) {
+    private init(session: Session, config: Config, mic: Mic, transcriber: Transcriber, drawing: Drawing) {
         self.session = session
+        self.config = config
         self.mic = mic
         self.transcriber = transcriber
         self.drawing = drawing
         watcher = Watcher(session: session)
     }
 
-    /// `onTrouble` hears, on the main thread, what goes wrong with the
-    /// microphone while it records, in words for the person.
+    /// `onNote` hears, on the main thread, what happens to the microphone
+    /// while it records (it moved to another, it sends nothing), in words
+    /// for the person.
     static func begin(config: Config, drawing: Drawing,
-                      onTrouble: @escaping @MainActor (String) -> Void) async throws -> Recording {
-        let session = try Session(input: config.inputName ?? "system default")
+                      onNote: @escaping @MainActor (String) -> Void) async throws -> Recording {
+        let session = try Session(input: Mic.first(of: config.microphones))
         let transcriber = Transcriber(id: session.id)
         let mic = Mic(onOpen: { c in session.chunkOpened(c.n, file: c.file, start: c.start) },
                       onClose: { c in
                           session.chunkClosed(c.n, file: c.file, end: c.end, seconds: c.seconds, peakDb: Double(c.peak))
                           Task { await transcriber.add(c.n) }
                       },
-                      onTrouble: { what in
+                      onMicrophone: { name in session.event("microphone", ["name": name]) },
+                      onNote: { what in
                           Log.line("session \(session.id): \(what)")
-                          Task { @MainActor in onTrouble(what) }
+                          Task { @MainActor in onNote(what) }
                       })
         do {
-            try await mic.start(into: session.dir, uid: config.inputUID, quality: config.soundQuality)
+            try await mic.start(into: session.dir, order: config.microphones, quality: config.soundQuality)
         } catch {
             session.remove()
             throw error
         }
-        let r = Recording(session: session, mic: mic, transcriber: transcriber, drawing: drawing)
+        let r = Recording(session: session, config: config, mic: mic, transcriber: transcriber, drawing: drawing)
         r.watcher.start(sound: config.soundQuality)
         drawing.begin(session, onMark: { [weak r] in r?.watcher.mark($0) },
                       onFade: { [weak r] in r?.watcher.faded($0, $1) },
@@ -51,6 +63,26 @@ final class Recording {
     }
 
     var level: Float { mic.level }
+
+    func pause() async {
+        guard !paused, !changing else { return }
+        changing = true
+        defer { changing = false }
+        drawing.putDown()
+        drawing.clear()
+        watcher.pause()
+        await mic.stop()
+        paused = true
+    }
+
+    func resume() async throws {
+        guard paused, !changing else { return }
+        changing = true
+        defer { changing = false }
+        try await mic.start(into: session.dir, order: config.microphones, quality: config.soundQuality)
+        watcher.resume()
+        paused = false
+    }
 
     /// Set a marker now and cut the chunk there, so the words up to it are
     /// transcribed straight away.

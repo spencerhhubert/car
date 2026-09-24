@@ -50,7 +50,9 @@ Verified:
 - Earlier: a marker waiting for its words, a session picked up after a
   crash, the screen-change test, the voice detection against real sessions.
 
-Not verified live yet: the new keys (⌘ ⌥ ⌥ and ⇧ ⌥ ⌥; ⌥ ⌥ is unchanged),
+Not verified live yet: the pill's hover, tooltips and pulsing dot (rendered
+by viewcheck, not yet under a person's pointer), pause and resume, the
+microphone list moving down and back up as devices come and go, the new keys (⌘ ⌥ ⌥ and ⇧ ⌥ ⌥; ⌥ ⌥ is unchanged),
 quick dictation end to end, the window with a person's mouse (the toolbar,
 the Settings button, keys in the picture viewer), the microphone watchdog,
 the hang watchdog. car-dev has them; it needs its grants and its keys

@@ -15,7 +15,7 @@ import SwiftUI
 //            SwiftUI needs for it, at three widths: a row that needs more
 //            would be cut off
 //   pictures the script's rows at their given heights, the sidebar's rows,
-//            the picture viewer and Settings, as PNGs in OUT
+//            the picture viewer, Settings and the pill, as PNGs in OUT
 //
 // SwiftUI draws nothing into a window that was never shown, so each window is
 // shown for a moment fully transparent and deaf to the mouse: nothing appears
@@ -280,8 +280,29 @@ MainActor.assumeIsolated {
     }
     let settings = SettingsModel(app: app)
     settings.reload()
+    settings.config.microphones = [Config.Microphone(uid: "a", name: "Wireless Lav"),
+                                   Config.Microphone(uid: "b", name: "Studio Display Microphone")]
     render(SettingsView(model: settings), NSSize(width: 900, height: 1500), "settings-\(mode).png")
     render(Sidebar(library: w.library), NSSize(width: 240, height: 400), "sidebar-\(mode).png")
+
+    // The pill: the dot quiet, speaking and paused; the toolbar, and paused.
+    let drawing = Drawing()
+    for (name, open, paused, voice) in [("dot-quiet", false, false, 0.0), ("dot-speaking", false, false, 1.0),
+                                        ("dot-paused", false, true, 0.0), ("toolbar", true, false, 0.6),
+                                        ("toolbar-paused", true, true, 0.0)] {
+        let m = Pill.Model()
+        m.open = open
+        m.paused = paused
+        let meter = Pill.Meter()
+        meter.voice = voice
+        meter.elapsed = 754
+        meter.level = -22
+        let size = open ? Metrics.Pill.toolbar : Metrics.Pill.dot
+        render(PillView(model: m, meter: meter, drawing: drawing, actions: Pill.Actions(pause: {}, stop: {}))
+                   .frame(width: size.width, height: size.height).padding(Spacing.m)
+                   .background(Color(nsColor: .windowBackgroundColor)),
+               NSSize(width: size.width + 2 * Spacing.m, height: size.height + 2 * Spacing.m), "pill-\(name)-\(mode).png")
+    }
     window.orderOut(nil)
 }
 exit(failed ? 1 : 0)

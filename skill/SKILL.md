@@ -67,7 +67,9 @@ it, then decide how much more you need.
   field's value afterwards), `scroll`, `picture <path> (why)`, `drew`,
   `faded`, `wiped`, `copied what was said … to the clipboard` (a quick
   dictation: those words went somewhere as text, most likely a message),
-  and an app's own report of what it shows.
+  `microphone → …` (which one recorded from there on), `paused` / `resumed`
+  (nothing was recorded between them), and an app's own report of what it
+  shows.
 - A drawing is in pictures until its `faded` or `wiped` line. Drawings fade
   six seconds after they are made, or as soon as the screen under them
   changes a lot.

@@ -14,11 +14,20 @@ be ("⌘ ⌥ ⌥").
 
 ## The pill (`Pill.swift`)
 
-A dot at the bottom of the screen while a session records, opening into the
-drawing toolbar under the pointer; a word when something happens
+A dot at the bottom of the screen while a session records, brightening and
+glowing with the sound coming in (a pause sign while paused), opening into
+the toolbar under the pointer: the clock and level, pause and stop, the four
+tools, the inks, the eraser. A word when something happens
 ("marker 3 · copied"); how transcription went when a session stops. It
 floats over other apps without taking focus, so it uses the `hud` text
-style and a material capsule.
+style and a material capsule, and its sizes are `Metrics.Pill`.
+
+Every toolbar button is a `PillButtonStyle`: a square (a circle for an ink)
+that lights under the pointer, darkens while pressed, and takes the ink's
+color while its tool is in hand, so where a click lands is always visible.
+Every button has a tooltip in a sentence, and the panel allows tooltips
+while car is not the app in front, which it never is while the pill is in
+use.
 
 ## The window (`Window/MainWindow.swift`)
 
@@ -78,8 +87,9 @@ space, a click beside it or the close button put it away.
 
 A page of the window, in a column 620 points wide: grouped sections like a
 pane of System Settings. Transcription (the model that writes the words, the
-one that keeps time, the key), Recording (microphone, quick dictation's
-pause), Keys (on or off, and the three gestures), Spent on transcription,
+one that keeps time, the key), Microphones (the list in order, each with up,
+down and remove, then the system default and Add Microphone), Recording
+(the sound's quality, quick dictation's pause), Keys (on or off, and the three gestures), Spent on transcription,
 Permissions (each with Grant… until it is given), Disk (pictures, sound, the
 catalog, all of it, and what is free on the disk), About (version, the log).
 Changes save as they are made. Footers explain in one or two sentences, in

@@ -92,7 +92,7 @@ extension Script {
     /// Something done, in a person's words: "Clicked “Save”", "button in Safari".
     public struct Action: Sendable, Identifiable, Equatable {
         public enum Kind: String, Sendable {
-            case app, window, page, finder, click, key, typed, select, scroll, mark, clear, desk, dictation
+            case app, window, page, finder, click, key, typed, select, scroll, mark, clear, desk, dictation, pause, resume, microphone
         }
 
         /// The event's id, which is the first of a run of the same action.
@@ -380,6 +380,14 @@ extension Script {
         case "dictation":
             let n = d["words"] as? Int ?? 0
             return make(.dictation, "Copied what was just said", "\(n) word\(n == 1 ? "" : "s")")
+        case "session":
+            switch d["phase"] as? String {
+            case "pause": return make(.pause, "Paused", "nothing recorded until it resumed")
+            case "resume": return make(.resume, "Resumed")
+            default: return nil
+            }
+        case "microphone":
+            return (d["name"] as? String).map { make(.microphone, "Recording from \($0)") }
         default:
             return nil
         }

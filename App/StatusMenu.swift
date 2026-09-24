@@ -2,7 +2,8 @@ import AppKit
 import CarKit
 
 // The 🏎️ in the menu bar and its menu, kept short: the session (start, or
-// stop, marker and discard while one records), the window, Settings, quit.
+// stop, pause, marker and discard while one records), the window, Settings,
+// quit.
 // Everything that is a setting lives in Settings.
 @MainActor
 final class StatusMenu: NSObject, NSMenuDelegate {
@@ -23,7 +24,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
 
     private func title() {
-        item.button?.title = (Config.isDev ? "🏎️dev" : "🏎️") + (app.recorder.recording != nil ? "●" : "")
+        let r = app.recorder.recording
+        item.button?.title = (Config.isDev ? "🏎️dev" : "🏎️") + (r == nil ? "" : r?.paused == true ? "‖" : "●")
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -38,6 +40,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         if let r = recorder.recording {
             menu.addItem(item("Stop Session (\(Render.clock(r.session.now).dropLast(4)))", #selector(App.toggleSession),
                               gesture: "⌘ ⌥ ⌥"))
+            menu.addItem(item(r.paused ? "Resume Session" : "Pause Session", #selector(App.togglePause)))
             menu.addItem(item("Set Marker", #selector(App.setMarker), gesture: "⌥ ⌥"))
             menu.addItem(item("Discard Session…", #selector(App.discardSession)))
         } else {

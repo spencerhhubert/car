@@ -6,8 +6,8 @@ import SwiftUI
 
 // Settings: a page of the window (the gear at the foot of the sidebar, or
 // ⌘,), grouped sections like a pane of System Settings. What writes the
-// words and keeps their time, and the key it needs; the microphone and quick
-// dictation's pause; the keys; what transcription has cost; what car keeps on
+// words and keeps their time, and the key it needs; the microphones in the
+// order to use them, the sound's quality and quick dictation's pause; the keys; what transcription has cost; what car keeps on
 // the disk; the permissions; which build this is. A change is saved as it is
 // made (config.json) and used from the next session or chunk on.
 @MainActor @Observable
@@ -22,7 +22,8 @@ final class SettingsModel {
     }
     private(set) var models: [OpenRouter.Model] = []
     private(set) var refreshing = false
-    private(set) var inputs: [AudioInputs.Device] = []
+    /// The microphones connected now.
+    private(set) var connected: [AudioInputs.Device] = []
     private(set) var hasKey = false
     private(set) var keyError: String?
     private(set) var permissions = Permissions()
@@ -47,7 +48,7 @@ final class SettingsModel {
     /// the catalog or walks the disk runs off the main thread; until it
     /// comes back the page shows what it last knew, so nothing on it moves.
     func reload() {
-        inputs = AudioInputs.all()
+        connected = AudioInputs.all()
         hasKey = Config.openRouterKey != nil
         permissions = Permissions(accessibility: Keys.trusted, microphone: Mic.permissionGranted,
                                   screen: Screenshot.hasPermission)
@@ -68,12 +69,21 @@ final class SettingsModel {
         return config.remoteModel.isEmpty || ids.contains(config.remoteModel) ? ids : [config.remoteModel] + ids
     }
 
-    var input: String? {
-        get { config.inputUID }
-        set {
-            config.inputUID = newValue
-            config.inputName = newValue.flatMap { uid in inputs.first { $0.uid == uid }?.name }
-        }
+    /// Connected microphones not on the list yet.
+    var unlisted: [AudioInputs.Device] {
+        connected.filter { d in !config.microphones.contains { $0.uid == d.uid } }
+    }
+
+    func isConnected(_ m: Config.Microphone) -> Bool { connected.contains { $0.uid == m.uid } }
+
+    func list(_ d: AudioInputs.Device) { config.microphones.append(Config.Microphone(uid: d.uid, name: d.name)) }
+
+    func unlist(_ m: Config.Microphone) { config.microphones.removeAll { $0.uid == m.uid } }
+
+    /// Move a microphone up (-1) or down (+1) the list.
+    func move(_ m: Config.Microphone, by step: Int) {
+        guard let i = config.microphones.firstIndex(of: m), config.microphones.indices.contains(i + step) else { return }
+        config.microphones.swapAt(i, i + step)
     }
 
     func saveKey(_ key: String) -> Bool {
@@ -140,14 +150,30 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Microphone", selection: $model.input) {
-                    Text("System Default").tag(String?.none)
-                    ForEach(model.inputs, id: \.uid) { Text($0.name).tag(String?.some($0.uid)) }
+                ForEach(Array(model.config.microphones.enumerated()), id: \.element.id) { i, m in
+                    microphoneRow(m, place: i + 1, last: i == model.config.microphones.count - 1)
                 }
-                Picker("Sound", selection: $model.config.soundQuality) {
-                    Text("Low").tag(SoundQuality.low)
-                    Text("Medium").tag(SoundQuality.medium)
-                    Text("High").tag(SoundQuality.high)
+                LabeledContent {
+                    Menu("Add Microphone") {
+                        ForEach(model.unlisted, id: \.uid) { d in Button(d.name) { model.list(d) } }
+                    }
+                    .fixedSize()
+                    .disabled(model.unlisted.isEmpty)
+                } label: {
+                    Text("\(model.config.microphones.count + 1). System default")
+                    Text(model.config.microphones.isEmpty ? "whichever the Mac is set to" : "when none above is connected")
+                        .textStyle(.detail)
+                }
+            } header: {
+                Text("Microphones")
+            } footer: {
+                Text("car records from the first one here that is connected. It moves down the list when one is unplugged or sends no sound, and back up as soon as one higher up is plugged back in.")
+                    .textStyle(.note)
+            }
+
+            Section {
+                Picker("Quality", selection: $model.config.soundQuality) {
+                    ForEach(SoundQuality.allCases, id: \.self) { Text($0.name).tag($0) }
                 }
                 LabeledContent("Quick dictation starts after") {
                     HStack(spacing: Spacing.s) {
@@ -158,7 +184,7 @@ struct SettingsView: View {
             } header: {
                 Text("Recording")
             } footer: {
-                Text("Sound: \(model.config.soundQuality.purpose) Transcription hears the same at any quality. A change is used from the next session.")
+                Text("\(model.config.soundQuality.name) quality: \(model.config.soundQuality.purpose). Transcription hears the same at any quality. A change is used from the next session.")
                     .textStyle(.note)
             }
 
@@ -272,6 +298,25 @@ struct SettingsView: View {
         if model.saveKey(key) {
             key = ""
             changingKey = false
+        }
+    }
+
+    private func microphoneRow(_ m: Config.Microphone, place: Int, last: Bool) -> some View {
+        LabeledContent {
+            HStack(spacing: Spacing.xs) {
+                Button { model.move(m, by: -1) } label: { Image(systemName: "chevron.up") }
+                    .disabled(place == 1)
+                    .help("Use it before the one above")
+                Button { model.move(m, by: 1) } label: { Image(systemName: "chevron.down") }
+                    .disabled(last)
+                    .help("Use it after the one below")
+                Button { model.unlist(m) } label: { Image(systemName: "minus.circle") }
+                    .help("Take it off the list")
+            }
+            .buttonStyle(.borderless)
+        } label: {
+            Text("\(place). \(m.name)")
+            Text(model.isConnected(m) ? "connected" : "not connected").textStyle(.detail)
         }
     }
 

@@ -3,7 +3,9 @@ import Foundation
 import CarKit
 
 // Sessions, from the app's side. A session is meant to run for hours: ⌘ ⌥ ⌥
-// starts it and ⌘ ⌥ ⌥ stops it; nothing else does. While it runs:
+// starts it and stops it, and so do the menu and the pill, which can also
+// pause it (nothing is recorded until it resumes; the session stays open).
+// While it runs:
 //
 //   ⌥ ⌥      sets a marker: the chunk of sound is cut there so its words
 //            come at once, and the clipboard gets a line naming the marker
@@ -22,7 +24,8 @@ final class Recorder {
     static let changed = Notification.Name("car.sessions.changed")
 
     let drawing = Drawing()
-    private(set) lazy var pill = Pill(drawing: drawing)
+    private(set) lazy var pill = Pill(drawing: drawing, actions: Pill.Actions(
+        pause: { [weak self] in self?.togglePause() }, stop: { [weak self] in self?.stop() }))
     private(set) var recording: Recording?
     /// A start is waiting on the microphone.
     private var starting = false
@@ -60,7 +63,7 @@ final class Recorder {
                 }
                 recording = r
                 let started = r.session.startedAt
-                pill.reading = { [weak r] in (Date().timeIntervalSince(started), r?.level ?? -160) }
+                pill.reading = { [weak r] in (Date().timeIntervalSince(started), r.map { $0.paused ? -160 : $0.level } ?? -160) }
                 refreshPill()
                 changed()
                 Log.line("session \(r.session.id) started")
@@ -121,6 +124,27 @@ final class Recorder {
             r.session.event("dictation", ["from": said.from, "to": said.to, "words": n], at: t)
             pill.say("\(n) word\(n == 1 ? "" : "s") · copied")
             Log.line("session \(id): dictation, \(n) words")
+        }
+    }
+
+    /// Pause the session being recorded, or resume a paused one.
+    func togglePause() {
+        guard let r = recording, !r.changing else { return }
+        Task { @MainActor in
+            if r.paused {
+                do {
+                    try await r.resume()
+                    Log.line("session \(r.session.id) resumed")
+                } catch {
+                    Log.line("session \(r.session.id) did not resume: \(error.localizedDescription)")
+                    pill.say("the microphone did not open: \(error.localizedDescription)", for: 6)
+                }
+            } else {
+                await r.pause()
+                Log.line("session \(r.session.id) paused")
+            }
+            refreshPill()
+            changed()
         }
     }
 
@@ -231,8 +255,8 @@ final class Recorder {
     }
 
     private func refreshPill() {
-        if recording != nil {
-            pill.show(.recording)
+        if let r = recording {
+            pill.show(.recording, paused: r.paused)
         } else if !finishing.isEmpty {
             pill.show(.working(finishing.count == 1 ? "transcribing the last of it…"
                                                     : "transcribing \(finishing.count) sessions…"))

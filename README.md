@@ -1,7 +1,7 @@
 # car 🏎️
 
-Continuous action recording: a Mac menu bar app for talking to an AI agent
-about what is on your screen. Start a session in the morning (hold ⌘, tap ⌥
+Continuous action recording: a Mac app for talking to an AI agent about
+what is on your screen. Start a session in the morning (hold ⌘, tap ⌥
 twice) and talk while you work, circling or pointing at things as you go. car
 records it as one timeline: every word with the moment it was said, next to
 the app, page, click and selection on screen at that moment, with pictures.
@@ -55,7 +55,7 @@ taken while it was up has it drawn in with its number:
 
 Needs macOS 26, Xcode and `xcodegen`. There is no download: clone this and
 run `./build.sh release`, which builds, signs and installs it, then grant its
-permissions in its Settings (🏎️ menu → Settings…). It asks for an OpenRouter key the first time it
+permissions in its Settings (the gear at the foot of its sidebar). It asks for an OpenRouter key the first time it
 needs one. How to start a session, mark, draw and stop is in the
 [guide](docs/guide.md). An agent learns to read sessions from
 [`skill/SKILL.md`](skill/SKILL.md).

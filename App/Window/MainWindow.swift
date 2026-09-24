@@ -1,66 +1,87 @@
 import AppKit
 import CarKit
+import Observation
 import SwiftUI
 
-// The sessions window: the sessions down the side, newest first, and the one
-// picked read as a script (ScriptView.swift). A session being recorded reads
-// live. AppKit makes the window, the split and the toolbar; SwiftUI draws
-// what is in the two panes, from two models the window owns.
+// car's window: the sessions down the side, newest first, with Settings at
+// the foot of the sidebar; the main pane shows the page picked (Detail.swift).
+// AppKit makes the window, the split and the toolbar; SwiftUI draws the
+// sidebar's list and each piece inside the panes. The window exists while it
+// is open: closing it stops everything it was reading, and the app (and any
+// recording) carries on.
 @MainActor
-final class SessionsWindow: NSWindowController, NSToolbarDelegate, NSToolbarItemValidation {
+final class MainWindow: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSToolbarItemValidation {
     let library: Library
-    let script: ScriptModel
+    private let detail: DetailController
     private var titling: Task<Void, Never>?
+    /// Told when the window has closed.
+    var onClose: () -> Void = {}
 
     private static let copyItem = NSToolbarItem.Identifier("copy")
     private static let revealItem = NSToolbarItem.Identifier("reveal")
 
-    init() {
+    init(app: App) {
         let library = Library()
-        let script = ScriptModel()
         self.library = library
-        self.script = script
+        detail = DetailController(library: library, script: ScriptModel(), settings: SettingsModel(app: app))
+
         let split = NSSplitViewController()
-        let sidebar = NSSplitViewItem(sidebarWithViewController: host(SessionList(library: library)))
+        let sidebar = NSSplitViewItem(sidebarWithViewController: host(Sidebar(library: library)))
         sidebar.minimumThickness = Metrics.sidebar.min
         sidebar.maximumThickness = Metrics.sidebar.max
-        let detail = NSSplitViewItem(viewController: host(ScriptPane(library: library, model: script)))
-        detail.minimumThickness = Metrics.sessionsWindowMin.width - Metrics.sidebar.min
-        split.splitViewItems = [sidebar, detail]
+        let main = NSSplitViewItem(viewController: detail)
+        main.minimumThickness = Metrics.windowMin.width - Metrics.sidebar.min
+        split.splitViewItems = [sidebar, main]
 
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: Metrics.sessionsWindow),
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: Metrics.window),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentViewController = split
-        window.title = "Sessions"
-        window.minSize = Metrics.sessionsWindowMin
+        window.title = Config.name
+        window.minSize = Metrics.windowMin
         window.toolbarStyle = .unified
-        window.setContentSize(Metrics.sessionsWindow)
-        if !window.setFrameUsingName("car.sessions") { window.center() }
-        window.setFrameAutosaveName("car.sessions")
+        window.setContentSize(Metrics.window)
+        if !window.setFrameUsingName("car.main") { window.center() }
+        window.setFrameAutosaveName("car.main")
         super.init(window: window)
+        window.delegate = self
 
-        let toolbar = NSToolbar(identifier: "car.sessions")
+        let toolbar = NSToolbar(identifier: "car.main")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
 
-        // The window's title is the session in front, for the Window menu
-        // and Mission Control.
+        detail.start()
+        // The window's title is the page in front, for the Window menu and
+        // Mission Control.
         titling = Task { [weak self, library] in
-            for await title in Observations({ library.selected.flatMap { $0.record.started.map(Format.session) } }) {
-                self?.window?.title = title ?? "Sessions"
+            for await title in Observations({ () -> String in
+                switch library.page {
+                case .settings: return "Settings"
+                case .session: return library.selected?.record.started.map(Format.session) ?? Config.name
+                case nil: return Config.name
+                }
+            }) {
+                self?.window?.title = title
             }
         }
     }
 
     required init?(coder: NSCoder) { fatalError("not from a nib") }
 
-    /// The window closed: stop following the session list.
-    func closed() {
+    /// Bring the window to the front, on `page` if one is given.
+    func show(_ page: Library.Page? = nil) {
+        if let page { library.page = page }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
+
+    func windowWillClose(_ note: Notification) {
+        detail.stop()
         titling?.cancel()
         titling = nil
+        onClose()
     }
 
     // MARK: - the toolbar

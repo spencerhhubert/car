@@ -17,7 +17,8 @@ import SQLite3
 // moments both write. Nothing outside CarKit sees SQL: Session.swift and
 // Usage.swift are the ways in.
 final class Catalog: @unchecked Sendable {
-    static let shared = Catalog(Config.root.appending(path: "car.sqlite"))
+    static let file = Config.root.appending(path: "car.sqlite")
+    static let shared = Catalog(file)
 
     private let queue = DispatchQueue(label: "car.catalog")
     private var db: OpaquePointer?

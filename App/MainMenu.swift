@@ -1,9 +1,8 @@
 import AppKit
 import CarKit
 
-// The menu bar while one of car's windows is open and car is the app in
-// front: the standard menus, with standard items, so ⌘W, ⌘C, ⌘, and the
-// rest do what they do everywhere.
+// The menu bar while car is the app in front: the standard menus, with
+// standard items, so ⌘W, ⌘C, ⌘, and the rest do what they do everywhere.
 @MainActor
 enum MainMenu {
     static func build(for app: App) -> NSMenu {
@@ -25,8 +24,6 @@ enum MainMenu {
         car.addItem(item("Quit \(name)", #selector(App.quit), "q", target: app))
 
         let file = menu("File", in: main)
-        file.addItem(item("Sessions", #selector(App.showSessions), "0", target: app))
-        file.addItem(.separator())
         file.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
         let edit = menu("Edit", in: main)
@@ -44,6 +41,8 @@ enum MainMenu {
         let window = menu("Window", in: main)
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        window.addItem(.separator())
+        window.addItem(item(name, #selector(App.showWindow), "0", target: app))
         window.addItem(.separator())
         window.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)),
                        keyEquivalent: "")

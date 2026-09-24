@@ -84,6 +84,25 @@ enum TextStyle {
         }
     }
 
+    /// The same font as AppKit has it, for measuring: the script's rows are
+    /// sized from their text before SwiftUI draws them (ScriptLayout.swift).
+    var nsFont: NSFont {
+        switch self {
+        case .title: NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .title2).pointSize, weight: .semibold)
+        case .subtitle, .action, .detail, .time, .listDetail: NSFont.preferredFont(forTextStyle: .callout)
+        case .speech: NSFont.preferredFont(forTextStyle: .body)
+        case .note: NSFont.preferredFont(forTextStyle: .caption1)
+        case .listTitle: NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .body).pointSize, weight: .medium)
+        case .hud: NSFont.preferredFont(forTextStyle: .callout)
+        }
+    }
+
+    /// The height of one line of it.
+    var lineHeight: CGFloat {
+        let f = nsFont
+        return ceil(f.ascender - f.descender + f.leading)
+    }
+
     var style: HierarchicalShapeStyle {
         switch self {
         case .title, .speech, .listTitle, .hud: .primary
@@ -99,20 +118,28 @@ extension View {
     }
 }
 
-/// The sizes of the windows and their parts.
+/// The sizes of the window and its parts.
 enum Metrics {
-    static let sessionsWindow = NSSize(width: 1180, height: 760)
-    static let sessionsWindowMin = NSSize(width: 860, height: 480)
+    static let window = NSSize(width: 1180, height: 760)
+    static let windowMin = NSSize(width: 860, height: 480)
     static let sidebar: (min: CGFloat, max: CGFloat) = (200, 320)
-    static let settingsWindow = NSSize(width: 540, height: 640)
-    /// The script's margins and its columns.
+    /// Settings reads as a column, not across the whole window.
+    static let settingsWidth: CGFloat = 620
+    /// The script: its margins, its time gutter, the space between its
+    /// columns, and above and below each row.
     static let scriptMargin: CGFloat = Spacing.xl
     static let scriptGutter: CGFloat = 84
     static let columnSpacing: CGFloat = Spacing.l
+    static let rowPadding: CGFloat = Spacing.s + Spacing.xxs
+    /// Actions a row shows before "N more".
+    static let actionsShown = 6
+    static let actionSymbol: CGFloat = 14
     /// A row's pictures: the first at the column's width in a box of this
-    /// shape, the rest small beside each other.
+    /// shape, the rest small beneath it.
     static let pictureAspect: CGFloat = 10.0 / 16.0
     static let smallPicture = CGSize(width: 56, height: 36)
+    /// The grey lines holding the place of words to come.
+    static let pendingLines: (long: CGFloat, short: CGFloat, height: CGFloat) = (260, 170, 8)
 }
 
 /// The words car writes about time, the one way everywhere: 12-hour, lower

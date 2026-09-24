@@ -30,12 +30,12 @@ struct Pending: View {
             line(Metrics.pendingLines.long)
             line(Metrics.pendingLines.short)
         }
-        .alignmentGuide(.firstTextBaseline) { d in label == nil ? d[.top] + Metrics.firstLine : d[.firstTextBaseline] }
         .accessibilityElement(children: .combine)
     }
 
     private func line(_ width: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: Radius.small).fill(.fill.secondary).frame(maxWidth: width).frame(height: 8)
+        RoundedRectangle(cornerRadius: Radius.small).fill(.fill.secondary)
+            .frame(maxWidth: width).frame(height: Metrics.pendingLines.height)
     }
 }
 
@@ -105,16 +105,14 @@ extension Script.Action.Kind {
     }
 }
 
-extension Metrics {
-    /// A cell with no text (pictures, placeholder lines) puts its top this
-    /// far above the row's first baseline: level with the top of the words.
-    static let firstLine: CGFloat = 12
-    static let pendingLines: (long: CGFloat, short: CGFloat) = (260, 170)
-}
-
 /// What was said, with each mark drawn during it ("{red circle 1}") set in
 /// the mark's own ink.
 enum Said {
+    /// The text as it reads, braces gone: what is measured.
+    static func plain(_ text: String) -> String {
+        text.replacingOccurrences(of: "{", with: "").replacingOccurrences(of: "}", with: "")
+    }
+
     static func styled(_ text: String) -> AttributedString {
         var out = AttributedString()
         var rest = Substring(text)

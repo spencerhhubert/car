@@ -17,7 +17,7 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/viewcheck.XXXXXX")"
 APP="$HERE/Sources/viewcheck/app"
 rm -rf "$APP" && mkdir -p "$APP"
 find "$HERE/../../App" -name '*.swift' ! -name 'main.swift' -exec cp {} "$APP/" \;
-sed -i '' 's/^private struct/struct/' "$APP/ScriptView.swift" "$APP/SessionList.swift"
+sed -i '' 's/^private struct/struct/' "$APP/ScriptView.swift" "$APP/Sidebar.swift"
 
 mkdir -p "$WORK/root" "$WORK/out"
 sqlite3 "$CATALOG" ".backup '$WORK/root/car.sqlite'"

@@ -15,12 +15,21 @@ words, Apple's on-device one keeps time; they run side by side). The catalog
 (`car.sqlite`) holds every session, chunk, word, event, marker, cost, and
 where each file is.
 
-Beside the menu bar there are now two windows: the sessions, read as a
-script (words, what was done around them, the pictures, live while
-recording, a picture big on a click), and Settings, which took everything
-that was a choice out of the menu. How they look and how their code is kept
-from breaking is `docs/design-system/`; `tools/viewcheck` renders them to
-pictures for checking.
+car is an ordinary app with one window, in the Dock, with a 🏎️ in the
+menu bar for working in other apps. The window lists the sessions, reads the
+one picked as a script (words, what was done around them, the pictures, live
+while recording, a picture big on a click), and has Settings at the foot of
+its sidebar, which took everything that was a choice out of the menu,
+disk use included. How it looks and how its code is kept from hanging is
+`docs/design-system/`; `tools/viewcheck` stress-scrolls it, checks every
+row's height, and renders it to pictures.
+
+The first version of the script was a SwiftUI lazy stack in a scroll view
+and hung (full CPU, never settling) after a minute of mouse-wheel scrolling:
+SwiftUI measuring rows and moving the view to hold its place, round and
+round. It is now an AppKit table whose row heights car works out itself
+(`ScriptLayout`), and `Watchdog.swift` samples the app if its main thread
+ever stops answering for three seconds.
 
 Verified:
 - CarKit's tests (`swift test --package-path CarKit`): alignment, onsets,
@@ -28,16 +37,17 @@ Verified:
   geometry, fading, the catalog, and the script's rows (what goes near a
   remark, words still to come, markers, repeats folding, long gaps) and
   quick dictation's stretch.
-- The windows rendered from a real session in light and dark
-  (`tools/viewcheck`): the script, the sidebar rows, the picture viewer,
-  Settings.
+- The window against real sessions (`tools/viewcheck`): 600 wheel steps,
+  200 jumps and 60 resizes with no step over 100 ms; every row's height at
+  least what SwiftUI needs at three widths; the script, sidebar rows,
+  picture viewer and Settings rendered in light and dark.
 - Earlier: a marker waiting for its words, a session picked up after a
   crash, the screen-change test, the voice detection against real sessions.
 
 Not verified live yet: the new keys (⌘ ⌥ ⌥ and ⇧ ⌥ ⌥; ⌥ ⌥ is unchanged),
-quick dictation end to end, the sessions window with a person's mouse (the
-toolbar, the Dock icon coming and going, keys in the picture viewer), the
-microphone watchdog. car-dev has them; it needs its grants and its keys
+quick dictation end to end, the window with a person's mouse (the toolbar,
+the Settings button, keys in the picture viewer), the microphone watchdog,
+the hang watchdog. car-dev has them; it needs its grants and its keys
 turned on. `tools/live-test.txt` still plays the old hold-⌥ flow.
 
 The microphone watchdog came from a real loss: a session recorded nine
@@ -51,11 +61,11 @@ pill says so.
 The repo, the package (CarKit), the apps (car, car-dev), the bundle ids
 (com.car.mac…), the folders (`Application Support/car`, `car.sqlite`,
 `car.log`) and the lines on the clipboard all say car. owl-dev's data was
-moved to car-dev with a one-off script (folder, catalog file, the catalog's
-store root, the log; old app and command removed). The installed owl is
-moved the same way once it is idle and the person says so. A new bundle id
-means new grants: Accessibility, Microphone, Screen Recording and Automation
-are given again, once.
+moved to car-dev, and the installed owl to car on 2026-09-24 once it was
+idle, with a one-off script (folder, catalog file, the catalog's store
+root, the log; old app and command removed). A new bundle id means new
+grants: Accessibility, Microphone, Screen Recording and Automation are given
+again, once.
 
 ## What is next
 

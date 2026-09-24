@@ -20,8 +20,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>LSUIElement</key>
-	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>car asks Finder which files you have selected and a browser which page is open, so a session can say what was in front of you.</string>
 	<key>NSHumanReadableCopyright</key>

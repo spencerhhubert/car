@@ -2,9 +2,10 @@ import AppKit
 import CarKit
 import SwiftUI
 
-// The sessions window's sidebar: every session by day, newest first, each
-// with the first words said in it, the way Mail and Notes list theirs.
-struct SessionList: View {
+// The window's sidebar: every session by day, newest first, each with the
+// first words said in it, the way Mail and Notes list theirs; and at its
+// foot, Settings.
+struct Sidebar: View {
     @Bindable var library: Library
 
     var body: some View {
@@ -27,9 +28,22 @@ struct SessionList: View {
         }
         .overlay {
             if library.loaded, library.sessions.isEmpty {
-                ContentUnavailableView("No Sessions", systemImage: "waveform",
-                                       description: Text("Hold ⌘ and tap ⌥ twice to start one."))
+                Text("No sessions yet").textStyle(.note)
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            let on = library.page == .settings
+            HStack {
+                Button { library.page = .settings } label: {
+                    Label("Settings", systemImage: on ? "gearshape.fill" : "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .help("Settings (⌘,)")
+                Spacer()
+            }
+            .padding(.horizontal, Spacing.l)
+            .padding(.vertical, Spacing.m)
         }
         .task { await library.follow() }
     }

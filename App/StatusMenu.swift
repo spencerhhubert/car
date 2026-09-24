@@ -1,8 +1,8 @@
 import AppKit
 import CarKit
 
-// The car in the menu bar and its menu, kept short: the session (start, or
-// stop, marker and discard while one records), the two windows, quit.
+// The 🏎️ in the menu bar and its menu, kept short: the session (start, or
+// stop, marker and discard while one records), the window, Settings, quit.
 // Everything that is a setting lives in Settings.
 @MainActor
 final class StatusMenu: NSObject, NSMenuDelegate {
@@ -48,7 +48,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
                                                                 : "Transcribing \(recorder.finishing.count) sessions…"))
         }
         menu.addItem(.separator())
-        menu.addItem(item("Sessions…", #selector(App.showSessions)))
+        menu.addItem(item("Open \(Config.name)", #selector(App.showWindow)))
         let settings = item("Settings…", #selector(App.showSettings))
         settings.keyEquivalent = ","
         menu.addItem(settings)

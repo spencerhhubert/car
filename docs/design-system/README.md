@@ -1,9 +1,9 @@
 # car's design system
 
-How car looks and how its interface code is written, so that every window
+How car looks and how its interface code is written, so that all of it
 reads as one app and none of it breaks in ways that are hard to find. The
 code is `App/Design/`: `Design.swift` holds every size, spacing, font and
-color, and `Components.swift` the pieces the windows are made of. A view
+color, and `Components.swift` the pieces the window is made of. A view
 uses those names and nothing of its own.
 
 ## Three rules
@@ -20,7 +20,7 @@ uses those names and nothing of its own.
    own ink marks that drawing. The accent color is the system's, for
    selection and links. No decoration, no gradients, no cards around things
    that are not separate things.
-3. **The session is the content.** The sessions window exists to show what
+3. **The session is the content.** The window exists to show what
    was said, what was done and what was on the screen. It is dense and
    aligned to one grid so that density reads as order. Chrome gets out of
    its way.
@@ -30,10 +30,11 @@ uses those names and nothing of its own.
 - [foundations.md](foundations.md): type, spacing, color, shape, symbols,
   motion, and how car writes (capitalization, times).
 - [components.md](components.md): each shared piece and when to use it.
-- [surfaces.md](surfaces.md): the menu, the pill, the sessions window, the
-  picture viewer, Settings: what each is for and how it is laid out.
+- [surfaces.md](surfaces.md): the menu, the pill, the window, the picture
+  viewer, Settings: what each is for and how it is laid out.
 - [engineering.md](engineering.md): how the interface code is built so it
-  does not crash or drift, and how a view is checked without a person.
+  does not hang, crash or drift (SwiftUI decides no size anything depends
+  on), and how a view is checked without a person.
 
 ## Changing it
 

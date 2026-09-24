@@ -2,26 +2,27 @@ import AppKit
 import Foundation
 import CarKit
 
-// The app: the car in the menu bar (StatusMenu.swift), the keys, the
-// sessions (Recorder.swift), and two windows (Windows/): the sessions, read
-// as a script, and the settings.
+// The app: an ordinary Mac app with one window (MainWindow.swift): the
+// sessions, each read as a script, and Settings. It is in the Dock and the app
+// switcher, has its own menu bar (MainMenu.swift), and also a 🏎️ in the menu
+// bar (StatusMenu.swift) for starting, stopping and marking while working in
+// other apps. Sessions are Recorder.swift's; the keys are Keys.swift's.
 //
-// car lives in the menu bar. While one of its windows is open it is also an
-// ordinary app, in the Dock and the app switcher with a menu bar of its own
-// (MainMenu.swift); when the last one closes it goes back to the menu bar
-// alone. Opening car.app while it runs opens the sessions window.
-//
-// Quitting (⌘Q, the menu, or a plain `kill`) closes the session being
-// recorded properly first; ⌘Q and the menu ask before ending a recording.
+// Closing the window leaves car running, and recording if it was: the Dock
+// icon or the 🏎️ menu opens it again. Quitting (⌘Q, the menus, or a plain
+// `kill`) closes the session being recorded properly first; ⌘Q and the menus
+// ask before ending a recording.
 @MainActor
 final class App: NSObject, NSApplicationDelegate {
     let recorder = Recorder()
     private(set) lazy var keys = Keys { [weak self] gesture in self?.handle(gesture) }
-    private(set) lazy var windows = Windows(app: self)
     private var status: StatusMenu?
+    private var window: MainWindow?
+    private let watchdog = Watchdog()
     private var terminate: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        NSApp.setActivationPolicy(.regular)
         NSApp.mainMenu = MainMenu.build(for: self)
         status = StatusMenu(app: self)
         if Config.load().keys { setKeys(on: true) }
@@ -32,24 +33,25 @@ final class App: NSObject, NSApplicationDelegate {
         term.setEventHandler { NSApp.terminate(nil) }
         term.resume()
         terminate = term
+        watchdog.start()
         Log.line("\(Config.name) \(Config.version) up (accessibility \(Keys.trusted), mic \(Mic.permissionGranted), " +
                  "screen \(Screenshot.hasPermission))")
         linkCommand()
         recorder.finishOrphans()
+        showWindow()
     }
 
     func applicationWillTerminate(_ note: Notification) {
         recorder.stopNow()
     }
 
-    /// car.app opened again while running (Finder, Spotlight, the Dock). The
-    /// pill counts as a visible window, so this does not ask.
+    /// The Dock icon clicked, or car.app opened again while running.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        windows.showSessions()
+        showWindow()
         return false
     }
 
-    /// Closing the windows leaves car in the menu bar, recording.
+    /// Closing the window leaves car running, recording if it was.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     private func handle(_ gesture: Keys.Gesture) {
@@ -70,10 +72,23 @@ final class App: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The window, made when it is needed and let go of when it closes.
+    private func open(_ page: Library.Page?) {
+        let w = window ?? MainWindow(app: self)
+        if window == nil {
+            window = w
+            w.onClose = { [weak self] in
+                // Let go after AppKit is done closing it.
+                DispatchQueue.main.async { self?.window = nil }
+            }
+        }
+        w.show(page)
+    }
+
     // MARK: - actions from the menus
 
-    @objc func showSessions() { windows.showSessions() }
-    @objc func showSettings() { windows.showSettings() }
+    @objc func showWindow() { open(nil) }
+    @objc func showSettings() { open(.settings) }
     @objc func toggleSession() { recorder.toggle() }
     @objc func setMarker() { recorder.marker() }
     @objc func discardSession() { recorder.discard() }

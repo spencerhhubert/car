@@ -53,22 +53,24 @@ clipboard as text, ready to paste. The pause is a setting (Settings →
 Recording). The session carries on as it was, and the timeline notes it:
 `copied what was said since 01:02.000 to the clipboard (42 words)`.
 
-## The sessions window
+## The window
 
-*Sessions…* in the 🏎️ menu (or opening car.app while it runs) opens a
-window with every session down the side, newest first, each with the first
-words said in it, and the one picked read as a script: a row for each moment,
-with when it was said in the margin, what was said, what was done around it,
-and the pictures taken then. Click a picture to see it big; ← and → step
-through every picture in the session. A marker is a line across with a button
-that copies it for an agent. Where the words are still to come, the row says
-so; a session being recorded reads live and grows at the bottom. While the
-window is open car is in the Dock like any app; when it closes car goes back
-to the menu bar alone.
+car is an app like any other: open it and its window shows every session
+down the side, newest first, each with the first words said in it, and the
+one picked read as a script: a row for each moment, with when it was said in
+the margin, what was said, what was done around it, and the pictures taken
+then. Click a picture to see it big; ← and → step through every picture in
+the session. A marker is a line across with a button that copies it for an
+agent. Where the words are still to come, the row says so; a session being
+recorded reads live and grows at the bottom.
 
-*Settings…* (⌘,) holds everything that is a choice: the models, the key, the
-microphone, quick dictation's pause, the keys, what transcription has cost,
-the permissions, and which build this is.
+Settings is the gear at the foot of the sidebar (⌘,): the models, the key,
+the microphone, quick dictation's pause, the keys, what transcription has
+cost, what car keeps on the disk, the permissions, and which build this is.
+
+Closing the window leaves car running, and recording if it was. The 🏎️ in
+the menu bar starts, stops and marks sessions from any app, and opens the
+window.
 
 ## Drawing while you talk
 
@@ -221,7 +223,7 @@ their numbers.
 
 Every call to OpenRouter is in the catalog with what it cost. Settings shows
 today, the last 7 and 30 days and all of it, and the last 30 days by model;
-each session's cost is in the sessions window; `car usage` prints the same.
+each session's cost is at the top of its script; `car usage` prints the same.
 No key ships with car: with a remote model chosen, the first session asks for
 one (Settings changes it). It is kept in
 `~/Library/Application Support/car/openrouter.key`, readable by you only, or

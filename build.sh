@@ -97,4 +97,6 @@ codesign --force --deep --options runtime --entitlements "$HERE/App/car.entitlem
 codesign --verify --strict "$APP"
 
 echo "==> installed $APP; it links $HOME/.local/bin/$NAME when it starts"
-open "$APP"
+# Started hidden and in the background: a build never puts a window in front
+# of the person. The Dock icon shows it.
+open -g -j "$APP"

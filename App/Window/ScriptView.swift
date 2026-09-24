@@ -2,93 +2,54 @@ import AppKit
 import CarKit
 import SwiftUI
 
-// A session as a script: a title, then one row per moment down a long
-// scroll, each in three columns: what was said, with the time it was said in
-// the margin; what was done around it; the pictures taken then. A marker is
-// a line across; a long stretch of nothing says how long. Where the words are
-// still to come the row says so, and a session being recorded grows at the
-// bottom as it goes, the view following it there unless scrolled away.
-// Clicking a picture shows it big (PictureViewer.swift).
+// What each line of the script draws: the title and facts, a row, or the
+// end. A row is three columns: what was said (its time in the margin), what
+// was done around it, and the pictures taken then. A marker is a line across;
+// a long stretch of nothing says how long; where words are still to come the
+// row holds their place.
+//
+// These views only draw. The table (ScriptController.swift) gives each line
+// its height from ScriptLayout, and the views lay out top-down inside it,
+// every column at a width the layout fixed: no alignment guides, no state
+// that changes a size, nothing that asks the table for room.
 
-/// The sessions window's main pane: the session picked in the sidebar.
-struct ScriptPane: View {
-    let library: Library
-    let model: ScriptModel
+/// A line of the script's table.
+enum ScriptLine: Identifiable, Equatable {
+    case header
+    case row(Script.Row)
+    case footer
 
-    var body: some View {
-        if let id = library.selectedID {
-            ScriptView(model: model)
-                .task(id: id) { await model.follow(id) }
-        } else if library.loaded {
-            ContentUnavailableView("No Session", systemImage: "waveform",
-                                   description: Text("Hold ⌘ and tap ⌥ twice to start one."))
+    var id: String {
+        switch self {
+        case .header: "header"
+        case .row(let r): r.id
+        case .footer: "footer"
         }
     }
 }
 
-private struct ScriptView: View {
-    @Bindable var model: ScriptModel
-    @State private var width: CGFloat = 0
-    @State private var position = ScrollPosition(edge: .top)
-    @State private var atBottom = false
+struct LineView: View {
+    let line: ScriptLine
+    let script: Script
+    let layout: ScriptLayout
+    var expanded = false
+    var open: (Int) -> Void = { _ in }
+    var expand: () -> Void = {}
 
     var body: some View {
-        if let s = model.script {
-            let columns = Columns(width: width)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    Header(script: s)
-                    ForEach(s.rows) { row in
-                        RowView(row: row, id: s.id, time: time(row.start, in: s), columns: columns,
-                                open: { model.viewing = $0 })
-                            .equatable()
-                    }
-                    Footer(script: s)
-                }
-                .padding(.horizontal, Metrics.scriptMargin)
+        Group {
+            switch line {
+            case .header:
+                Header(script: script)
+            case .row(let row):
+                RowView(row: row, id: script.id, time: script.date(row.start).map(Format.timeSeconds) ?? Render.clock(row.start),
+                        layout: layout, expanded: expanded, open: open, expand: expand)
+            case .footer:
+                Footer(script: script)
             }
-            .scrollPosition($position)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            .onScrollGeometryChange(for: Bool.self) { g in
-                g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 80
-            } action: { _, bottom in
-                atBottom = bottom
-            }
-            // A live session opens at its newest and follows it while the
-            // view is left there; a finished one opens at its start.
-            .onChange(of: s.id, initial: true) {
-                position.scrollTo(edge: s.status == .recording ? .bottom : .top)
-            }
-            .onChange(of: s.length) {
-                if s.status == .recording, atBottom { position.scrollTo(edge: .bottom) }
-            }
-            .overlay {
-                if model.viewing != nil { PictureViewer(script: s, viewing: $model.viewing) }
-            }
-        } else if model.missing {
-            ContentUnavailableView("No Such Session", systemImage: "questionmark.folder",
-                                   description: Text("It was discarded or removed."))
-        } else {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
-
-    private func time(_ t: Int, in s: Script) -> String {
-        s.date(t).map(Format.timeSeconds) ?? Render.clock(t)
-    }
-}
-
-/// The widths of the script's columns, from the width of the pane: the words
-/// take what the others leave.
-private struct Columns: Equatable {
-    let gutter = Metrics.scriptGutter
-    let actions: CGFloat
-    let pictures: CGFloat
-
-    init(width: CGFloat) {
-        let content = max(0, width - 2 * Metrics.scriptMargin)
-        actions = min(300, max(180, content * 0.26))
-        pictures = min(200, max(140, content * 0.19))
+        .padding(.horizontal, Metrics.scriptMargin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -98,19 +59,18 @@ private struct Header: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             HStack(alignment: .firstTextBaseline, spacing: Spacing.m) {
-                Text(script.started.map(Format.session) ?? script.id).textStyle(.title)
+                Text(script.started.map(Format.session) ?? script.id).textStyle(.title).lineLimit(1)
                 StatusBadge(status: script.status)
             }
             if script.status == .recording, let started = script.started {
                 TimelineView(.periodic(from: .now, by: 1)) { t in
-                    Text(facts(length: Int(t.date.timeIntervalSince(started) * 1000))).textStyle(.subtitle)
+                    Text(facts(length: Int(t.date.timeIntervalSince(started) * 1000))).textStyle(.subtitle).lineLimit(1)
                 }
             } else {
-                Text(facts(length: script.length)).textStyle(.subtitle)
+                Text(facts(length: script.length)).textStyle(.subtitle).lineLimit(1)
             }
         }
         .padding(.top, Spacing.l)
-        .padding(.bottom, Spacing.xl)
     }
 
     private func facts(length: Int) -> String {
@@ -125,62 +85,83 @@ private struct Footer: View {
     let script: Script
 
     var body: some View {
-        HStack(spacing: Spacing.s) {
+        HStack(alignment: .top, spacing: Spacing.s) {
             switch script.status {
             case .recording:
-                RecordingDot()
-                Text("Recording. Words come in every few minutes, and at once when you set a marker (⌥ ⌥).")
+                RecordingDot().padding(.top, 3)
             case .transcribing:
                 ProgressView().controlSize(.mini)
-                Text("Transcribing the last of it.")
-            case .failed(let why):
+            case .failed:
                 Image(systemName: "exclamationmark.triangle.fill").symbolRenderingMode(.multicolor)
-                Text("Some of it could not be transcribed: \(why)")
             case .done:
-                Text(script.date(script.length).map { "Ended \(Format.timeSeconds($0))" } ?? "Ended")
+                EmptyView()
             }
+            Text(Footer.note(script)).fixedSize(horizontal: false, vertical: true)
         }
         .textStyle(.note)
         .padding(.leading, Metrics.scriptGutter + Metrics.columnSpacing)
         .padding(.vertical, Spacing.xl)
     }
+
+    /// What the footer says, which ScriptLayout measures too.
+    static func note(_ script: Script) -> String {
+        switch script.status {
+        case .recording: "Recording. Words come in every few minutes, and at once when you set a marker (⌥ ⌥)."
+        case .transcribing: "Transcribing the last of it."
+        case .failed(let why): "Some of it could not be transcribed: \(why)"
+        case .done: script.date(script.length).map { "Ended \(Format.timeSeconds($0))" } ?? "Ended"
+        }
+    }
 }
 
-private struct RowView: View, Equatable {
+extension ScriptLine {
+    /// Its height in `layout`.
+    func height(in layout: ScriptLayout, script: Script, expanded: Bool) -> CGFloat {
+        switch self {
+        case .header: layout.headerHeight
+        case .row(let r): layout.height(r, expanded: expanded)
+        case .footer: layout.footerHeight(Footer.note(script))
+        }
+    }
+}
+
+private struct RowView: View {
     let row: Script.Row
     let id: String
     let time: String
-    let columns: Columns
+    let layout: ScriptLayout
+    let expanded: Bool
     let open: (Int) -> Void
-
-    nonisolated static func == (a: RowView, b: RowView) -> Bool {
-        a.row == b.row && a.time == b.time && a.columns == b.columns
-    }
+    let expand: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let gap = row.gapBefore {
                 Text("\(Format.span(ms: gap)) later")
                     .textStyle(.note)
-                    .padding(.leading, columns.gutter + Metrics.columnSpacing)
+                    .padding(.leading, layout.gutter + Metrics.columnSpacing)
                     .padding(.vertical, Spacing.m)
             }
             if let m = row.marker {
-                MarkerLine(marker: m, id: id, time: time, gutter: columns.gutter)
+                MarkerLine(marker: m, id: id, time: time, gutter: layout.gutter)
+                    .padding(.vertical, Spacing.m)
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: Metrics.columnSpacing) {
+                HStack(alignment: .top, spacing: Metrics.columnSpacing) {
                     Text(time)
                         .textStyle(.time)
-                        .frame(width: columns.gutter, alignment: .leading)
+                        .lineLimit(1)
+                        .padding(.top, ScriptLayout.calloutDrop)
+                        .frame(width: layout.gutter, alignment: .leading)
                         .help("\(Render.clock(row.start)) into the session")
                     SpeechCell(speech: row.speech)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    ActionsCell(actions: row.actions)
-                        .frame(width: columns.actions, alignment: .leading)
-                    PicturesCell(pictures: row.pictures, width: columns.pictures, open: open)
-                        .frame(width: columns.pictures, alignment: .leading)
+                        .frame(width: layout.speech, alignment: .leading)
+                    ActionsCell(actions: row.actions, expanded: expanded, expand: expand)
+                        .padding(.top, ScriptLayout.calloutDrop)
+                        .frame(width: layout.actions, alignment: .leading)
+                    PicturesCell(pictures: row.pictures, layout: layout, open: open)
+                        .frame(width: layout.pictures, alignment: .leading)
                 }
-                .padding(.vertical, Spacing.s + Spacing.xxs)
+                .padding(.vertical, Metrics.rowPadding)
             }
         }
     }
@@ -209,14 +190,14 @@ private struct SpeechCell: View {
                     Label("Not transcribed", systemImage: "exclamationmark.triangle.fill")
                         .symbolRenderingMode(.multicolor)
                         .textStyle(.action)
-                    Text(why).textStyle(.note)
+                    Text(why).textStyle(.note).fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 Color.clear.frame(height: 1)
             }
         case .lost(let first):
             if first {
-                Text("Not saved: car stopped before this stretch was written.").textStyle(.note)
+                Text(ScriptLayout.lost).textStyle(.note).fixedSize(horizontal: false, vertical: true)
             } else {
                 Color.clear.frame(height: 1)
             }
@@ -226,16 +207,16 @@ private struct SpeechCell: View {
 
 private struct ActionsCell: View {
     let actions: [Script.Action]
-    @State private var expanded = false
-    private static let shown = 6
+    let expanded: Bool
+    let expand: () -> Void
 
     var body: some View {
-        let hidden = expanded ? 0 : max(0, actions.count - Self.shown)
+        let hidden = expanded ? 0 : max(0, actions.count - Metrics.actionsShown)
         VStack(alignment: .leading, spacing: Spacing.xs) {
             if actions.isEmpty { Color.clear.frame(height: 1) }
             ForEach(actions.prefix(actions.count - hidden)) { ActionLine(action: $0) }
             if hidden > 0 {
-                Button("\(hidden) more") { expanded = true }
+                Button("\(hidden) more", action: expand)
                     .buttonStyle(.link)
                     .textStyle(.detail)
                     .padding(.leading, Metrics.actionSymbol + Spacing.s)
@@ -267,26 +248,21 @@ private struct ActionLine: View {
 
 private struct PicturesCell: View {
     let pictures: [Script.Picture]
-    let width: CGFloat
+    let layout: ScriptLayout
     let open: (Int) -> Void
 
     var body: some View {
-        // Always the column's width, pictures or not, so the columns of
-        // every row line up.
-        if pictures.isEmpty {
-            Color.clear.frame(width: width, height: 1)
-        } else if let first = pictures.first {
-            let rest = pictures.dropFirst()
-            let room = max(1, Int((width + Spacing.xs) / (Metrics.smallPicture.width + Spacing.xs)))
-            let small = rest.count > room ? room - 1 : rest.count
+        if let first = pictures.first {
+            let rest = Array(pictures.dropFirst())
+            let (shown, more) = layout.smallPictures(rest.count)
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                picture(first, CGSize(width: width, height: (width * Metrics.pictureAspect).rounded()))
+                picture(first, layout.firstPicture)
                 if !rest.isEmpty {
                     HStack(spacing: Spacing.xs) {
-                        ForEach(rest.prefix(small)) { picture($0, Metrics.smallPicture) }
-                        if rest.count > small {
-                            Button { open(rest[rest.startIndex + small].id) } label: {
-                                Text("+\(rest.count - small)")
+                        ForEach(rest.prefix(shown)) { picture($0, Metrics.smallPicture) }
+                        if more > 0 {
+                            Button { open(rest[shown].id) } label: {
+                                Text("+\(more)")
                                     .textStyle(.note)
                                     .frame(width: Metrics.smallPicture.width, height: Metrics.smallPicture.height)
                                     .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: Radius.medium))
@@ -296,7 +272,8 @@ private struct PicturesCell: View {
                     }
                 }
             }
-            .alignmentGuide(.firstTextBaseline) { $0[.top] + Metrics.firstLine }
+        } else {
+            Color.clear.frame(height: 1)
         }
     }
 
@@ -316,7 +293,7 @@ private struct MarkerLine: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: Metrics.columnSpacing) {
-            Text(time).textStyle(.time).frame(width: gutter, alignment: .leading)
+            Text(time).textStyle(.time).lineLimit(1).frame(width: gutter, alignment: .leading)
             HStack(spacing: Spacing.s) {
                 Image(systemName: "flag.fill").font(TextStyle.note.font).foregroundStyle(.secondary)
                 Text("Marker \(marker.n)").font(TextStyle.action.font.weight(.semibold))
@@ -338,10 +315,6 @@ private struct MarkerLine: View {
                 }
             }
         }
-        .padding(.vertical, Spacing.m)
+        .frame(height: 22)
     }
-}
-
-extension Metrics {
-    static let actionSymbol: CGFloat = 14
 }

@@ -4,27 +4,12 @@ import Observation
 import CarKit
 import SwiftUI
 
-// Settings: one page of grouped sections, like a pane of System Settings.
-// What writes the words and keeps their time, and the key it needs; the
-// microphone and quick dictation's pause; the keys; what transcription has
-// cost; the permissions; which build this is. A change is saved as it is
+// Settings: a page of the window (the gear at the foot of the sidebar, or
+// ⌘,), grouped sections like a pane of System Settings. What writes the
+// words and keeps their time, and the key it needs; the microphone and quick
+// dictation's pause; the keys; what transcription has cost; what car keeps on
+// the disk; the permissions; which build this is. A change is saved as it is
 // made (config.json) and used from the next session or chunk on.
-@MainActor
-final class SettingsWindow: NSWindowController {
-    init(app: App) {
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: Metrics.settingsWindow),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.title = "Settings"
-        window.contentViewController = host(SettingsView(model: SettingsModel(app: app)))
-        window.setContentSize(Metrics.settingsWindow)
-        window.center()
-        super.init(window: window)
-    }
-
-    required init?(coder: NSCoder) { fatalError("not from a nib") }
-}
-
 @MainActor @Observable
 final class SettingsModel {
     private unowned let app: App
@@ -43,6 +28,7 @@ final class SettingsModel {
     private(set) var permissions = Permissions()
     private(set) var spending: [(name: String, total: Usage.Total)] = []
     private(set) var byModel: [(model: String, total: Usage.Total)] = []
+    private(set) var disk: Storage.Use?
 
     struct Permissions: Equatable {
         var accessibility = false
@@ -65,6 +51,10 @@ final class SettingsModel {
                                   screen: Screenshot.hasPermission)
         spending = Usage.spans.map { ($0.name, Usage.total(since: $0.since)) }
         byModel = Usage.byModel(since: Usage.spans[2].since)
+        Task {
+            let use = await Task.detached(priority: .utility) { Storage.use() }.value
+            disk = use
+        }
     }
 
     /// The remote models to pick from: the fetched list, with the one in use
@@ -114,7 +104,7 @@ final class SettingsModel {
     func grantAutomation() { Adapters.requestAutomation() }
 }
 
-private struct SettingsView: View {
+struct SettingsView: View {
     @Bindable var model: SettingsModel
     @State private var changingKey = false
     @State private var key = ""
@@ -198,14 +188,33 @@ private struct SettingsView: View {
                 Text("Each is given once, in System Settings.").textStyle(.note)
             }
 
-            Section("About") {
-                LabeledContent("Version", value: "\(Config.name) \(Config.version)")
-                LabeledContent("Sessions") {
+            Section {
+                if let d = model.disk {
+                    LabeledContent("Pictures", value: Storage.bytes(d.pictures))
+                    LabeledContent("Sound", value: Storage.bytes(d.sound))
+                    LabeledContent("Catalog", value: Storage.bytes(d.catalog + d.other))
+                    LabeledContent("All of it", value: Storage.bytes(d.total)).fontWeight(.medium)
+                    if let free = d.free { LabeledContent("Free on this disk", value: Storage.bytes(free)) }
+                } else {
+                    LabeledContent("Measuring") { ProgressView().controlSize(.small) }
+                }
+            } header: {
+                Text("Disk")
+            } footer: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Sessions are kept in \(Config.sessionsDir.path).")
+                    Spacer()
                     Button("Show in Finder") {
                         try? FileManager.default.createDirectory(at: Config.sessionsDir, withIntermediateDirectories: true)
                         NSWorkspace.shared.open(Config.sessionsDir)
                     }
+                    .buttonStyle(.link)
                 }
+                .textStyle(.note)
+            }
+
+            Section("About") {
+                LabeledContent("Version", value: "\(Config.name) \(Config.version)")
                 LabeledContent("Log") {
                     Button("Open") {
                         NSWorkspace.shared.open(FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
@@ -215,6 +224,10 @@ private struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .frame(maxWidth: Metrics.settingsWidth)
+        .frame(maxWidth: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { model.reload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.reload()

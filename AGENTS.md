@@ -1,7 +1,7 @@
 # AGENTS.md
 
-car: a Mac menu bar app that records a person's voice and what they do on the
-computer as one timeline, for hours at a time, and hands stretches of it to AI
+car (continuous action recording): a Mac app, with a 🏎️ in the menu bar,
+that records a person's voice and what they do on the computer as one timeline, for hours at a time, and hands stretches of it to AI
 agents at markers. Read `README.md` first, then `docs/guide.md` (how it
 works), then `docs/handoff.md` (where the work stands), then
 `agent-notes.local/` if it exists (facts about this machine, never tracked).
@@ -116,20 +116,23 @@ CarKit/                 a Swift package: everything that is not the Mac's screen
       Fading.swift          when a mark fades: its time, or what is under it changing
   Tests/CarKitTests/
 App/                    the menu bar app and the `car` command, one binary (main.swift decides)
-  App.swift               the app's life: launch, quit, the keys, the Dock while a window is open
+  App.swift               the app's life: launch, quit, the keys, the window
   Recorder.swift          sessions: start and stop, markers, quick dictation, finishing, the pill's words
   StatusMenu.swift        the 🏎️ in the menu bar and its short menu; MainMenu.swift the menu bar while a window is open
   CLI.swift               the command
   Design/                 the design system in code (docs/design-system/ says why)
     Design.swift            every spacing, radius, color, text style, size; how times are written
     Components.swift        the shared pieces: recording dot, status, placeholder lines, thumbnail
-  Windows/                the two windows; AppKit makes them, SwiftUI draws inside
-    Windows.swift           opening and closing them; the Dock icon follows
-    SessionsWindow.swift    the sessions window: split view, toolbar; Library.swift and SessionList.swift the sidebar
-    ScriptModel.swift, ScriptView.swift   the session as a script, live while it records
+  Watchdog.swift          samples the app when its main thread stops answering
+  Window/                 the one window; AppKit makes it and scrolls it, SwiftUI draws inside
+    MainWindow.swift        the window: split view, toolbar, title
+    Library.swift, Sidebar.swift   the sessions down the side, Settings at its foot; which page is in front
+    Detail.swift            the main pane: the script, Settings, or an empty state
+    ScriptController.swift  the script as an AppKit table; ScriptLayout.swift every row's height; ScriptView.swift the rows
+    ScriptModel.swift       the session in front, read live while it records
     PictureViewer.swift     a picture big, stepping through the session's
     Pictures.swift          pictures off the main thread, cached
-    SettingsWindow.swift    Settings: one page of grouped sections
+    SettingsView.swift      Settings: grouped sections, disk use among them
   Capture/                the Mac's side
     Recording.swift         the session being recorded: microphone, watcher, drawing, transcriber
     Mic.swift               the microphone as chunks cut at pauses; reopens after sleep, a device change, or silence
@@ -162,10 +165,11 @@ project.yml, build.sh   xcodegen + xcodebuild (CarKit as a local package), tests
   waiting on its words, and a session picked up after a crash, are checked.
 - **Recovery in the app:** quit car-dev with SIGTERM mid-session and open it:
   it finishes the session at launch.
-- **Views:** `tools/viewcheck/run.sh <session id> [light|dark]` renders the
-  script, the sidebar rows, the picture viewer and Settings from a backup of
-  car-dev's catalog, to pictures; look at every one before calling a view
-  done. How the interface code is kept from breaking is
+- **Views:** `tools/viewcheck/run.sh <session id> [light|dark]` scrolls and
+  resizes the real window (failing on any stall), checks every row's height
+  against what SwiftUI needs, and renders the script, the sidebar rows, the
+  picture viewer and Settings, from a backup of car-dev's catalog; it must
+  pass, and every picture be looked at, before a view is done. How the interface code is kept from breaking is
   `docs/design-system/engineering.md`; read the design system before
   touching a view.
 - **Live, end to end, on a Mac no one is using:** `tools/drive.sh HOST` puts

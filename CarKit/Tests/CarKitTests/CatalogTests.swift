@@ -42,6 +42,18 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: s.dir.path))
     }
 
+    @Test func diskUseCountsWhatIsThere() throws {
+        let s = try Session(input: "test mic")
+        defer { s.remove() }
+        let before = Storage.use()
+        try Data(count: 64 * 1024).write(to: s.dir.appending(path: "shots/00001000.jpg"))
+        try Data(count: 32 * 1024).write(to: s.dir.appending(path: "audio/0001.m4a"))
+        let after = Storage.use()
+        #expect(after.pictures - before.pictures >= 64 * 1024)
+        #expect(after.sound - before.sound >= 32 * 1024)
+        #expect(after.catalog > 0 && after.free != nil)
+    }
+
     @Test func usageAddsUp() {
         Usage.record(session: nil, chunk: nil, purpose: "words", model: "m", audioSeconds: 60, cost: 0.01)
         Usage.record(session: nil, chunk: nil, purpose: "words", model: "m", audioSeconds: 30, cost: 0.02)

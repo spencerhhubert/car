@@ -4,12 +4,13 @@ Everything car shows, what each is for, and how it is laid out.
 
 ## The menu bar item and its menu (`StatusMenu.swift`)
 
-🏎️ in the menu bar, 🏎️● while recording, 🏎️dev for the development copy.
-Its menu is short on purpose: the session (Start Session; or Stop Session
-with its length, Set Marker, Discard Session… while recording), Sessions…,
-Settings…, Quit. A gesture that does the same as an item is shown to its
-right, where a key equivalent would be ("⌘ ⌥ ⌥"). Anything that is a
-setting is in Settings, not here.
+car is an ordinary app with one window, in the Dock and the app switcher;
+the 🏎️ in the menu bar (🏎️● while recording, 🏎️dev for the development
+copy) is for working in other apps. Its menu is short on purpose: the
+session (Start Session; or Stop Session with its length, Set Marker,
+Discard Session… while recording), Open car, Settings…, Quit. A gesture that
+does the same as an item is shown to its right, where a key equivalent would
+be ("⌘ ⌥ ⌥").
 
 ## The pill (`Pill.swift`)
 
@@ -19,19 +20,22 @@ drawing toolbar under the pointer; a word when something happens
 floats over other apps without taking focus, so it uses the `hud` text
 style and a material capsule.
 
-## The sessions window (`Windows/SessionsWindow.swift`)
+## The window (`Window/MainWindow.swift`)
 
-A sidebar and a script, in a window with a unified toolbar: the sidebar
+One window: a sidebar and a main pane, with a unified toolbar: the sidebar
 toggle at the left, and at the right Copy for Agent (the line that hands the
-session to an agent) and Show in Finder. The window title is the session in
-front, for the Window menu and Mission Control.
+session to an agent) and Show in Finder. The window title is the page in
+front, for the Window menu and Mission Control. Closing it leaves car
+running; the Dock icon, ⌘0 or Open car brings it back.
 
-**Sidebar** (`SessionList.swift`): sessions by day, newest first. A row is
-the start time, the length at the right (or a dot and a running clock while
+**Sidebar** (`Sidebar.swift`): sessions by day, newest first. A row is the
+start time, the length at the right (or a dot and a running clock while
 recording, a spinner while transcribing, an orange triangle when some of it
-failed), and the first words said in it, two lines, like Mail and Notes.
+failed), and the first words said in it, two lines, like Mail and Notes. At
+its foot, Settings (a gear, tinted while Settings is in front; ⌘,).
 
-**The script** (`ScriptView.swift`): one long scroll.
+**The script** (`ScriptController.swift`, `ScriptView.swift`,
+`ScriptLayout.swift`): one long scroll, an AppKit table of SwiftUI rows.
 
 ```
 Today, 2:15 pm  ● Recording
@@ -70,11 +74,13 @@ its time, why it was taken, its place among all the session's pictures, and
 what was being said. ← and → step through every picture in the session; Esc,
 space, a click beside it or the close button put it away.
 
-## Settings (`SettingsWindow.swift`)
+## Settings (`Window/SettingsView.swift`)
 
-One page of grouped sections, like a pane of System Settings: Transcription
-(the model that writes the words, the one that keeps time, the key), Recording
-(microphone, quick dictation's pause), Keys (on or off, and the three
-gestures), Spent on transcription, Permissions (each with Grant… until it is
-given), About (version, the sessions folder, the log). Changes save as they
-are made. Footers explain in one or two sentences, in `note`.
+A page of the window, in a column 620 points wide: grouped sections like a
+pane of System Settings. Transcription (the model that writes the words, the
+one that keeps time, the key), Recording (microphone, quick dictation's
+pause), Keys (on or off, and the three gestures), Spent on transcription,
+Permissions (each with Grant… until it is given), Disk (pictures, sound, the
+catalog, all of it, and what is free on the disk), About (version, the log).
+Changes save as they are made. Footers explain in one or two sentences, in
+`note`.

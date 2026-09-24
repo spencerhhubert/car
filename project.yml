@@ -20,9 +20,6 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        # Starts in the menu bar alone; while one of its windows is open it is
-        # in the Dock too (Windows.swift switches it).
-        LSUIElement: true
         # car, or car-dev for the development copy (build.sh sets PRODUCT_NAME).
         CFBundleDisplayName: $(PRODUCT_NAME)
         NSHumanReadableCopyright: ""

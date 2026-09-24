@@ -32,6 +32,21 @@ second later and only a stopped engine is reopened, at most once a second),
 runs owl-dev for that; `tools/live-test.txt` still plays the old hold-⌥ flow
 and needs the new keys before gravity can run it.
 
+Since then: whether anyone spoke is decided by owl's own voice detection
+(`Voice.swift`, no model; 98.8% of onset-verified words caught on real
+sessions, about 1.4× the spoken time kept), and only the voice goes to the
+models. The remote model (OpenRouter) writes the words, capped and timed out;
+the local model (Apple) keeps time with a deadline, since its model fetch has
+hung for minutes; both are chosen in the menu. On a real two-minute chunk that
+had cost $0.20 and seven minutes (Gemini looping on silence), the same chunk
+now costs $0.002 and three seconds. Releases are `tools/release.sh`, and the
+installed owl updates itself (`App/Update/Updater.swift`); no key ships.
+
+Not yet exercised: a release (it needs a Developer ID Application
+certificate, which the account does not have yet, and the `owl-notary`
+keychain profile), and so the updater end to end. `tools/live-test.txt` still
+plays the old hold-⌥ flow.
+
 ## Before the first release of this
 
 The real owl's sessions are still in the old per-folder files (meta.json,
@@ -39,7 +54,8 @@ events.jsonl, words.json, audio.m4a). They go into its catalog the way
 owl-dev's did: an import that makes each old session one chunk, turns its
 events and pictures into rows, then removes the old files. Back the sessions
 folder up first. The old copy knows nothing of locks, so check its log for a
-session in progress before `./build.sh release`.
+session in progress before replacing it. Moving from its Apple Development
+signature to Developer ID means granting its four permissions once more.
 
 ## What is next
 

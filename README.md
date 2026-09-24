@@ -21,31 +21,36 @@ The pill has a pen, an arrow, a circle and a rectangle, and one row of inks
 anywhere on any screen. A shape is drawn once and the pointer goes back to your
 apps; the pen stays in hand for the next stroke. A click without a drag, Esc,
 or the tool's button again puts a tool down. ⇧ makes a true circle, a square,
-or an arrow at 45°. The bin wipes the drawings off the screen; the session
-keeps them.
+or an arrow at 45°.
+
+A drawing is a gesture made while talking, not a note left on the screen: it
+holds for six seconds and fades over three. When what it was drawn on changes
+a lot (another tab, a scroll, a model turned), it fades in half a second. owl
+watches the screen under each drawing with a small, slow capture while
+drawings are up, and not at all otherwise. The bin wipes them all at once.
 
 Each drawing is a mark, numbered in the order drawn: *red circle 1*, *blue
 arrow 2*. It is recorded with what it was drawn on, set into the words at the
-moment it was drawn, and drawn with its number into every picture it is on,
-plus a picture of the whole screen the moment it is finished. So "this part
-here" has an answer:
+moment it was drawn, drawn with its number into every picture taken while it
+is up, and gets a picture of the whole screen the moment it is finished. So
+"this part here" has an answer:
 
 ```
 [00:12.050–00:15.900] “so this part here {red circle 1} is the one that's wrong”
 [00:13.200] drew red circle 1 around button “Save” in Safari “Settings”
 [00:13.260] picture shots/00013260.jpg (red circle 1)
+[00:16.410] red circle 1 faded as the screen under it changed
 ```
 
 ## When a session ends
 
 It is transcribed in the background, and the next session can start at once.
-The clipboard does not get the words. It gets a note for an agent: that this
-is an owl session, when it was and how long, and to read it with
-`owl session <id>`, which prints the timeline and waits if the words are not
-in yet. Paste it into any agent and the session is the message: what you
-said, what was on the screen while you said it, what you drew, and the
-pictures. The menu's *Copy last session for an agent* puts it back, and
-`owl pointer <id>` prints it.
+The clipboard does not get the words. It gets one line, `new owl session
+20260922-104412`, for pasting into an agent that knows owl: it reads the
+session with `owl session <id>`, which waits if the words are not in yet, and
+gets all of it: what you said, what was on the screen while you said it, what
+you drew, and the pictures. The menu's *Copy last session for an agent* puts
+the line back, and `owl pointer <id>` prints it.
 
 A session is `recording`, then `transcribing`, then `done` or `failed`
 (`meta.json` says which). Whoever is recording or transcribing one holds its
@@ -77,7 +82,8 @@ sessions/20260922-104412/
 [00:04.400] finder in /Users/me/Downloads/ selected: /Users/me/Downloads/IMG_1234.MOV, /Users/me/Downloads/IMG_1235.MOV
 ```
 
-Everything an agent might want beyond that is a file beside it: `words.json`
+An agent reading sessions should start from `skill/SKILL.md`. Everything an
+agent might want beyond the timeline is a file beside it: `words.json`
 for the exact moment of a word, `events.jsonl` for the full detail of an
 event (the whole accessibility description of what was clicked), `shots/` for
 what the screen showed. The timeline names each picture so a reader can open
@@ -183,7 +189,7 @@ and timed; the words are then the on-device recognizer's.
 ```
 owl sessions                          every session, with its state
 owl session last                      the timeline; waits for a transcription in progress
-owl pointer last                      the note for an agent
+owl pointer last                      the line for an agent
 owl guide                             this file
 owl status                            what is being recorded or transcribed now
 owl transcribe last [--text-model M] [--time-source apple|openrouter:M]

@@ -46,8 +46,8 @@ enum Render {
             How to read it: each line is a moment, [minutes:seconds.ms] from the start, on one clock for words and \
             events alike. Quoted lines are what was said; the rest is what happened on the screen. A drawing's name \
             in braces inside a quote, like {red circle 1}, is where in the sentence it was drawn; its own line says \
-            what it was drawn on, and the pictures show it with its number. Pictures are in `shots/`: open the ones \
-            the timeline names. Every word's time is in `words.json`, every event's full detail in `events.jsonl`.
+            what it was drawn on, and it is on the screen, and in the pictures with its number, until the line that \
+            says it faded. Pictures are in `shots/`: open the ones the timeline names. Every word's time is in `words.json`, every event's full detail in `events.jsonl`.
             """, "", "## timeline", ""]
 
         struct Row { let t: Int; let order: Int; let text: String }
@@ -177,9 +177,12 @@ enum Render {
             var s = "drew \(e["name"] as? String ?? "a mark")" + (on.isEmpty ? "" : " \(verb) \(on)")
             if !app.isEmpty { s += " in \(app)" + q(e["window"]) }
             return s
+        case "fade":
+            let names = (e["names"] as? [String] ?? []).joined(separator: ", ")
+            return "\(names) faded" + (e["why"] as? String == "screen" ? " as the screen under it changed" : "")
         case "clear":
-            let n = (e["marks"] as? [Int] ?? []).map(String.init).joined(separator: ", ")
-            return "wiped drawings \(n) off the screen"
+            let names = e["names"] as? [String] ?? (e["marks"] as? [Int] ?? []).map { "drawing \($0)" }
+            return "wiped \(names.joined(separator: ", ")) off the screen"
         default: return nil
         }
     }

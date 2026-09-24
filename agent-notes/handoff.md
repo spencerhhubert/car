@@ -40,6 +40,21 @@ Not verified: the drawing layer, the Escape tap and the pill's buttons on a
 live screen, and the watcher end to end after the reader rewrite. They need
 the person to run an owl-dev session, which needs owl-dev's own grants first.
 
+## 2026-09-24, after the person tried owl-dev
+
+- Drawings fade: six seconds, then three to fade; half a second once the
+  screen under them changes a lot (`ScreenChange.swift`: a small, slow
+  ScreenCaptureKit stream per display, only while marks are up). The change
+  test is relative to each region's own contrast. On real page pictures a
+  30 pt scroll of a list or toolbar, a 120 pt scroll of anything, and a page
+  going blank count; noise, the pointer and a 6 pt nudge do not. A mark
+  leaves the record (and the pictures) when it starts to fade: a `fade` event.
+- The clipboard line is just `new owl session <id>`; agents learn owl from
+  `skill/SKILL.md`, which a vault skill points at.
+- owl-dev on the person's Mac had the microphone but not Accessibility or
+  Screen Recording in the first try: no Esc, no element names, no pictures,
+  and without Screen Recording marks only fade with time.
+
 ## What is next
 
 - The person runs an owl-dev session: draw each tool, Esc, clear, stop from

@@ -5,7 +5,7 @@ import Foundation
 //
 //   owl sessions                          every session, newest last, with its state
 //   owl session <id|last>                 the timeline; waits for a transcription in progress
-//   owl pointer <id|last>                 the note for an agent a stopped session puts on the clipboard
+//   owl pointer <id|last>                 the line a stopped session puts on the clipboard
 //   owl guide                             how owl works, for a person or an agent
 //   owl status                            what is being recorded or transcribed now; exit 3 if anything
 //   owl transcribe <id|last> [--text-model M] [--time-source apple|openrouter:M]
@@ -159,7 +159,7 @@ enum CLI {
 
           \(owl) sessions
           \(owl) session <id|last>        the timeline (waits for a transcription in progress)
-          \(owl) pointer <id|last>        the note for an agent
+          \(owl) pointer <id|last>        the line for an agent
           \(owl) guide                    how owl works
           \(owl) status                   what is being recorded or transcribed now
           \(owl) transcribe <id|last> [--text-model M] [--time-source apple|openrouter:M]

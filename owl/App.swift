@@ -5,8 +5,8 @@ import Foundation
 //
 // At most one session records at a time; any number can be transcribing
 // behind it, so a new session starts the moment the last one stops. When one
-// stops, the clipboard gets a note for an agent pointing at it (Pointer.swift),
-// not its words. A session left unfinished by a crash or a quit is finished at
+// stops, the clipboard gets a line naming it for an agent (Pointer.swift), not
+// its words. A session left unfinished by a crash or a quit is finished at
 // the next launch; quitting (the menu, or a plain `kill`) closes the session
 // being recorded properly first.
 @MainActor
@@ -118,7 +118,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stopTicker()
         status.button?.title = idleTitle
         let s = r.session
-        Pointer.copy(Pointer.text(id: s.id, started: s.startedAt, seconds: Double(s.now) / 1000))
+        Pointer.copy(Pointer.text(id: s.id))
         finish(s.id) {
             let s = await r.stop()
             Log.line("session \(s.id) ended, \(s.count) events")

@@ -8,35 +8,55 @@ import AppKit
 // With no tool in hand the layer lets every click through to the apps and only
 // shows the marks. With one, it takes the mouse on every screen: a drag draws,
 // and a click without a drag puts the tool down, as does Escape, which an
-// event tap swallows (and nothing else) for as long as a tool is in hand. The
-// windows exist only while there is something to show, and go when the
-// session does.
+// event tap swallows (and nothing else) for as long as a tool is in hand.
+//
+// A mark is a gesture made while talking, not a note left on the screen: it
+// holds for a few seconds and fades. When what it was drawn on changes a lot
+// (another tab, a scroll, a model turned; ScreenChange.swift watches), it
+// fades at once. A mark leaves the session's record the moment it starts to
+// fade, so no picture shows it over something it was not about. The windows
+// exist only while there is something to show, and go when the session does.
 @MainActor
 final class Drawing: ObservableObject {
+    /// A mark holds this long, then fades over `slowFade`…
+    static let hold: TimeInterval = 6
+    static let slowFade: TimeInterval = 3
+    /// …or fades over this once what it was drawn on has changed.
+    static let quickFade: TimeInterval = 0.5
+
     /// The tool in hand, or nil when the pointer belongs to the apps.
     @Published private(set) var tool: Tool?
     /// One ink for every tool, kept from one session to the next.
     @Published var ink: Ink = .red
-    /// What is on the screen now.
+    /// The marks on the screen and on the record: drawn, not yet fading.
     @Published private(set) var marks: [Mark] = []
 
     private var session: Session?
     private var next = 1
     private var live: Mark?
+    /// Marks fading out: still drawn, no longer on the record, gone at `until`.
+    private var leaving: [Int: (mark: Mark, until: Date)] = [:]
+    /// Each mark's hold, then its fade.
+    private var timers: [Int: Task<Void, Never>] = [:]
     private var onMark: (Mark) -> Void = { _ in }
+    private var onFade: (Mark, Fade) -> Void = { _, _ in }
     private var onClear: ([Mark]) -> Void = { _ in }
+    private lazy var change = ScreenChange { [weak self] n in self?.fade(n, over: Self.quickFade, because: .screen) }
     private var windows: [CanvasWindow] = []
     private var escape: EscapeTap?
     private var screens: NSObjectProtocol?
 
-    /// How many marks this session has made, cleared or not.
+    /// How many marks this session has made.
     var drawn: Int { next - 1 }
 
-    /// A session started: marks can be drawn, and each finished one is handed
-    /// to `onMark`.
-    func begin(_ session: Session, onMark: @escaping (Mark) -> Void, onClear: @escaping ([Mark]) -> Void) {
+    /// A session started: marks can be drawn. Each finished one is handed to
+    /// `onMark`, each one that starts to fade to `onFade`, and a wipe's to
+    /// `onClear`.
+    func begin(_ session: Session, onMark: @escaping (Mark) -> Void, onFade: @escaping (Mark, Fade) -> Void,
+               onClear: @escaping ([Mark]) -> Void) {
         self.session = session
         self.onMark = onMark
+        self.onFade = onFade
         self.onClear = onClear
         next = 1
     }
@@ -46,8 +66,9 @@ final class Drawing: ObservableObject {
         session = nil
         tool = nil
         live = nil
-        marks = []
+        drop()
         onMark = { _ in }
+        onFade = { _, _ in }
         onClear = { _ in }
         sync()
     }
@@ -67,13 +88,21 @@ final class Drawing: ObservableObject {
         sync()
     }
 
-    /// Wipe the screen. The marks stay in the session's record.
+    /// Wipe the screen now. The marks stay in the session's record.
     func clear() {
-        guard !marks.isEmpty else { return }
+        guard !marks.isEmpty || !leaving.isEmpty else { return }
         let gone = marks
-        marks = []
+        drop()
         sync()
-        onClear(gone)
+        if !gone.isEmpty { onClear(gone) }
+    }
+
+    private func drop() {
+        for t in timers.values { t.cancel() }
+        timers = [:]
+        marks = []
+        leaving = [:]
+        change.forgetAll()
     }
 
     // MARK: - the mouse, from a canvas window
@@ -104,6 +133,39 @@ final class Drawing: ObservableObject {
         if !m.tool.staysInHand { tool = nil }
         sync()
         onMark(m)
+        change.track(m)
+        let n = m.n
+        timers[n] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.hold))
+            guard !Task.isCancelled else { return }
+            self?.fade(n, over: Self.slowFade, because: .time)
+        }
+    }
+
+    // MARK: - fading
+
+    /// Start mark `n` fading, or hurry one already fading.
+    private func fade(_ n: Int, over duration: TimeInterval, because why: Fade) {
+        let until = Date().addingTimeInterval(duration)
+        if let i = marks.firstIndex(where: { $0.n == n }) {
+            let m = marks.remove(at: i)
+            leaving[n] = (m, until)
+            onFade(m, why)
+        } else if let l = leaving[n], until < l.until {
+            leaving[n] = (l.mark, until)
+        } else {
+            return
+        }
+        timers[n]?.cancel()
+        for w in windows { w.canvas.fade(n, over: duration) }
+        timers[n] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(duration))
+            guard !Task.isCancelled, let self else { return }
+            self.timers[n] = nil
+            self.leaving[n] = nil
+            self.change.forget(n)
+            self.sync()
+        }
     }
 
     // MARK: - the windows
@@ -115,13 +177,14 @@ final class Drawing: ObservableObject {
     /// Bring the windows and the Escape tap in line with the state.
     private func sync() {
         let taking = tool != nil
-        let needed = taking || live != nil || !marks.isEmpty
+        let needed = taking || live != nil || !marks.isEmpty || !leaving.isEmpty
         if needed, windows.isEmpty { build() }
         if !needed, !windows.isEmpty { tearDown() }
+        let shown = marks + leaving.values.map(\.mark)
         for w in windows {
             w.ignoresMouseEvents = !taking
             w.canvas.taking = taking
-            w.canvas.show(marks)
+            w.canvas.show(shown)
             w.canvas.show(live: live)
         }
         if taking, escape == nil {
@@ -144,6 +207,10 @@ final class Drawing: ObservableObject {
                 guard let self else { return }
                 self.tearDown()
                 self.sync()
+                // Marks already fading carry on from where they were.
+                for (n, l) in self.leaving {
+                    for w in self.windows { w.canvas.fade(n, over: max(0.1, l.until.timeIntervalSinceNow)) }
+                }
             }
         }
     }
@@ -157,6 +224,11 @@ final class Drawing: ObservableObject {
         if let screens { NotificationCenter.default.removeObserver(screens) }
         screens = nil
     }
+}
+
+/// Why a mark left the screen: its time was up, or what it was drawn on changed.
+enum Fade: String {
+    case time, screen
 }
 
 /// One screen's worth of the layer: borderless, transparent, above every app
@@ -238,6 +310,18 @@ private final class CanvasView: NSView {
             shown[m.n] = l
         }
         CATransaction.commit()
+    }
+
+    /// Fade a mark out from wherever it is now; the drawing removes it after.
+    func fade(_ n: Int, over duration: TimeInterval) {
+        guard let l = shown[n] else { return }
+        let a = CABasicAnimation(keyPath: "opacity")
+        a.fromValue = l.presentation()?.opacity ?? l.opacity
+        a.toValue = 0
+        a.duration = duration
+        a.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        l.opacity = 0
+        l.add(a, forKey: "fade")
     }
 
     func show(live m: Mark?) {

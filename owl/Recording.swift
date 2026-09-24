@@ -32,6 +32,7 @@ final class Recording {
         self.drawing = drawing
         watcher.start()
         drawing.begin(session, onMark: { [weak watcher] in watcher?.mark($0) },
+                      onFade: { [weak watcher] in watcher?.faded($0, $1) },
                       onClear: { [weak watcher] in watcher?.cleared($0) })
     }
 

@@ -12,7 +12,7 @@ import Foundation
 //     with the element under the pointer or in focus
 //   - a one-second poll of the whole reading, which catches what the
 //     notifications miss (a browser changing tabs, Finder changing selection)
-//   - the drawing layer: every mark drawn, and the marks being cleared
+//   - the drawing layer: every mark drawn, fading, or wiped
 //
 // Everything that asks another app a question goes through the reader queue
 // (Adapters.swift) and comes back to the main thread to be compared and
@@ -233,11 +233,19 @@ final class Watcher {
         }
     }
 
+    /// A mark started to fade: from now on it is not in a picture.
+    func faded(_ m: Mark, _ why: Fade) {
+        guard listening else { return }
+        marks.removeAll { $0.n == m.n }
+        session.event("fade", ["marks": [m.n], "names": [m.name], "why": why.rawValue])
+    }
+
+    /// The screen was wiped.
     func cleared(_ gone: [Mark]) {
         guard listening else { return }
         let numbers = Set(gone.map(\.n))
         marks.removeAll { numbers.contains($0.n) }
-        session.event("clear", ["marks": gone.map(\.n)])
+        session.event("clear", ["marks": gone.map(\.n), "names": gone.map(\.name)])
     }
 
     // MARK: - input events

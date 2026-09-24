@@ -52,6 +52,11 @@ The person uses the real owl while you work. **Never stop, restart or replace
 
 ## Rules
 
+- **`skill/SKILL.md` is how every agent learns to read a session**, and
+  other places only point at it. Any change to what a session holds or how
+  it reads (a new event, a new file, a changed line) updates it in the same
+  change. Keep it short: what owl is, how deep to go, what each line means.
+
 - **Write every tracked file as if the repo were public.** No machine names,
   addresses, account names, paths on a server, keys, or anything about the
   person whose sessions these are. That goes in `agent-notes.local/`
@@ -97,6 +102,7 @@ owl/            the app and the `owl` command, one binary (main.swift decides)
   CLI.swift        the command
   Config.swift     settings, where things live, owl vs owl-dev
   Log.swift        the log; Failure, the one error type
+skill/SKILL.md          how an agent reads a session and acts on it (see below)
 tools/make-icon.swift   renders the icon
 tools/drive.swift, drive.sh, live-test.sh, live-test.txt
                         the live test: a driver, its install, its runner, its plan

@@ -25,7 +25,8 @@ final class Mic: @unchecked Sendable {
     private var engine: AVAudioEngine?
     private let lock = NSLock()
     private var file: AVAudioFile?
-    private var startedUptime: TimeInterval = 0
+    /// Uptime when the engine started: sample 0, give or take the input's latency.
+    private(set) var startedUptime: TimeInterval = 0
     private var startedAt: Date?
     private var peak: Float = -160
     private var wroteFrames: AVAudioFrameCount = 0

@@ -5,6 +5,51 @@ computer as one timeline. Read `README.md` first, then
 `agent-notes/handoff.md` (where the work stands), then `agent-notes.local/`
 if it exists (facts about this machine, never tracked).
 
+## How this program is kept
+
+- **You maintain it.** This codebase is yours to keep in good shape, not a
+  place to drop a patch and leave. Anyone opening any file should find code
+  that is clean, consistent and plainly correct. When you see something wrong
+  or untidy while you are in there, fix it.
+- **Build every feature as if it had been planned from the start.** A new
+  feature reshapes the structure around it: names, types, files and what a
+  session writes change so the result reads as designed, not bolted on. No
+  side paths, special cases or flags grafted onto the old shape. When
+  something is replaced, the old version goes in the same change. Git is the
+  backup.
+- **Rock solid and efficient.** owl runs all day on someone's computer and
+  sits in the path of everything they do. That means:
+  - Nothing that waits on another app runs on the main thread. Accessibility
+    reads, Apple events and subprocesses go through the reader queue
+    (`Adapters.swift`), and every one has a timeout.
+  - Nothing runs that does not need to: no work while idle beyond watching
+    for the gesture, and windows and taps exist only while in use.
+  - A crash, a quit or a hung app never costs a session. Sessions carry a
+    state and a lock (`Session.swift`), and an unfinished one is finished by
+    whoever finds it.
+  - Measure CPU and memory before calling a change done.
+
+## Working on it: the dev copy
+
+The person uses the real owl while you work. **Never stop, restart or replace
+`/Applications/owl.app` unless they say so.**
+
+- `./build.sh` builds and installs the development copy,
+  `/Applications/owl-dev.app`, with the `owl-dev` command. It has its own
+  bundle id, sessions and settings (`Application Support/owl-dev`), log
+  (`~/Library/Logs/owl-dev.log`) and permissions, and the menu bar shows it as
+  🦉dev. Its gesture is off by default (turn it on from its menu), so one hold
+  of ⌥ never starts two sessions. It reads the OpenRouter key from the real
+  copy's folder when it has none. `build.sh` only ever quits and replaces
+  owl-dev.
+- `./build.sh release` builds and installs the real owl. It refuses while owl
+  is recording or transcribing (`owl status`), otherwise quits it (SIGTERM is
+  a proper quit: a session that has just started is closed, not cut off) and
+  swaps in the new build. Run it only when the person asks.
+- The dev copy needs its own grants (Accessibility, Microphone, Screen
+  Recording, Automation) before it can record. Only the person can give them,
+  from its menu → Permissions.
+
 ## Rules
 
 - **Write every tracked file as if the repo were public.** No machine names,
@@ -19,42 +64,58 @@ if it exists (facts about this machine, never tracked).
   commit. A synthetic clip is the test fixture.
 - **Never print or commit a credential.** The key is read from a file or the
   environment and never logged. `git diff --cached` before every commit.
-- **Delete, don't preserve.** When an approach is replaced, the old one goes
-  in the same change. Git is the backup.
-- The three permissions the app needs (Accessibility, Microphone, Screen
-  Recording, plus Automation per app) can only be granted by the person, in
-  System Settings. Say so; do not work around it.
+- **The grants** (Accessibility, Microphone, Screen Recording, Automation per
+  app) can only be given by the person, in System Settings. Say so; do not
+  work around it.
+- **Never drive the person's screen to test.** No synthetic clicks or keys,
+  and no windows on their screen beyond owl-dev's own. Views are checked by
+  rendering them offscreen (see below).
 
 ## Layout
 
 ```
 owl/            the app and the `owl` command, one binary (main.swift decides)
-  App.swift       menu bar, session start/stop, the menu
-  Gesture.swift   hold ⌥ / double-click; TextProbe
-  Overlay.swift   the recording pill
-  Mic.swift       AVAudioEngine → 16 kHz mono AAC; input devices
-  Session.swift   a session folder, its clock, events.jsonl
-  Watcher.swift   what he does → events (workspace, AX observer, monitors, poll)
-  AX.swift        accessibility helpers, element descriptions
-  Adapters.swift  the generic reading + Finder and browser adapters
-  Screenshot.swift ScreenCaptureKit window pictures, dHash dedupe
+  App.swift        menu bar, the menu, sessions: one recording, any number transcribing
+  Recording.swift  the session being recorded: microphone, watcher, drawing
+  Gesture.swift    hold ⌥ / double-click; TextProbe
+  Pill.swift       the floating pill: time, level, drawing tools, stop, discard
+  Drawing.swift    the drawing layer: tool in hand, ink, canvas windows, Escape tap
+  Marks.swift      what a mark is: tools, inks, geometry, how it draws itself
+  Session.swift    a session folder, its clock, events.jsonl, Meta, SessionLock
+  Watcher.swift    what the person does → events (workspace, AX observer, monitors, poll, marks)
+  Adapters.swift   the reader queue; the generic reading + Finder, browser and desk adapters
+  AX.swift         accessibility helpers, hit tests, element descriptions; Space
+  Screenshot.swift window and display pictures, marks drawn in, dHash dedupe
+  Mic.swift        AVAudioEngine → 16 kHz mono AAC; input devices
   OpenRouter.swift the words (and optionally times) from a cloud model
   AppleTimes.swift word times from the on-device recognizer
-  Align.swift     lay the text model's words onto the timed words
-  Refine.swift    snap word starts to heard onsets; keep them monotonic
-  Transcribe.swift the pipeline; bench
-  Render.swift    session.md
-  CLI.swift       the command
-tools/make-icon.swift   renders the icon (output gitignored)
-project.yml, build.sh   xcodegen + xcodebuild, install, sign
+  Align.swift      lay the text model's words onto the timed words
+  Refine.swift     snap word starts to heard onsets; keep them monotonic
+  Transcribe.swift the pipeline and its states; bench
+  Render.swift     session.md, marks set into the words
+  Pointer.swift    the note for an agent that a stopped session leaves on the clipboard
+  CLI.swift        the command
+  Config.swift     settings, where things live, owl vs owl-dev
+  Log.swift        the log; Failure, the one error type
+tools/make-icon.swift   renders the icon
+project.yml, build.sh   xcodegen + xcodebuild, sign, install (dev or release)
 agent-notes/            what was learned, tracked
 ```
 
 ## Testing without a person
 
-`say -o clip.aiff "..."` then ffmpeg to 16 kHz mono AAC, put it in a session
-folder by hand with a `meta.json` (`soundSeconds`, `wallSeconds`,
-`audioStartMs`) and a small `events.jsonl`, then `owl transcribe <id>` and
-`owl bench <id> --model <id>`. That exercises everything but the microphone
-and the watcher. The watcher can only be checked by a person running a
-session and reading `session.md` back.
+- **The pipeline.** `say -o clip.aiff "..."`, then ffmpeg to 16 kHz mono AAC.
+  Put it in a session folder under owl-dev's sessions by hand with a
+  `meta.json` (`id`, `state`, `soundSeconds`, `wallSeconds`, `audioStartMs`,
+  `peakDb`) and an `events.jsonl` (marks included), then `owl-dev session <id>`
+  (a session left `transcribing` with no one at it is transcribed right there),
+  `owl-dev transcribe <id>` and `owl-dev bench <id> --model <id>`.
+- **Recovery.** Set a session's state back to `transcribing`, then quit
+  owl-dev with SIGTERM and open it: it finishes the session at launch.
+- **Views.** Copy the sources (all but `main.swift` and `App.swift`) to a
+  scratch folder, drop `private` where the test reaches in, and compile them
+  with a `main.swift` of its own that renders `PillView` in an NSHostingView
+  that is never put on screen (`cacheDisplay`), and marks onto any image with
+  `Screenshot.draw`. Then look at the files.
+- **The watcher and the drawing layer on a live screen** can only be checked
+  by the person running an owl-dev session and reading `session.md` back.

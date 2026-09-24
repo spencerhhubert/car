@@ -1,54 +1,117 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import OSAKit
 
-// What is in front of him, read two ways at once.
+// What is in front of the person, read two ways at once.
 //
 // The generic reading works for every app: the front window's title and
 // document, the focused element, the selected text. On top of it, an adapter
 // for an app that has a better answer: a browser's page URL, Finder's selected
-// files. Both readings are recorded, the generic one always, so an adapter
-// that turns out to be wrong for some window never costs the record.
-struct Reading: Equatable {
-    var app = ""
-    var bundle = ""
-    var windowTitle = ""
-    var document = ""
-    var focus: [String: String] = [:]
-    var extra: [String: Any] = [:]
+// files, an app's own `desk` command. Both readings are recorded, the generic
+// one always, so an adapter that turns out to be wrong for some window never
+// costs the record.
+//
+// Every one of these is a question to another app, answered when that app gets
+// round to it. So all of it runs on the reader queue, never on the main thread,
+// and each question has a short limit: a hung Finder costs one reading, not
+// the pill, the gesture or the session.
 
-    static func == (a: Reading, b: Reading) -> Bool {
-        a.app == b.app && a.bundle == b.bundle && a.windowTitle == b.windowTitle
-            && a.document == b.document && a.focus == b.focus
-            && NSDictionary(dictionary: a.extra).isEqual(to: b.extra)
+/// The one queue that talks to other apps. Serial, so readings arrive in the
+/// order they were asked for.
+enum Reader {
+    static let queue = DispatchQueue(label: "owl.reader", qos: .userInitiated)
+
+    /// Do `work` on the queue, then hand its result to the main thread.
+    static func run<T>(_ work: @escaping () -> T, then: @escaping @MainActor (T) -> Void) {
+        queue.async {
+            let value = work()
+            DispatchQueue.main.async { MainActor.assumeIsolated { then(value) } }
+        }
     }
 }
 
+/// The app in front, as the workspace has it: read on the main thread, handed
+/// to the reader.
+struct Front {
+    let pid: pid_t
+    let name: String
+    let bundle: String
+    let bundleURL: URL?
+
+    @MainActor static func now() -> Front? {
+        guard let a = NSWorkspace.shared.frontmostApplication else { return nil }
+        return Front(pid: a.processIdentifier, name: a.localizedName ?? "", bundle: a.bundleIdentifier ?? "",
+                     bundleURL: a.bundleURL)
+    }
+}
+
+struct Reading {
+    var app = ""
+    var bundle = ""
+    var pid: pid_t = 0
+    var windowTitle = ""
+    var document = ""
+    /// The focused window in the display space: which window a picture is of.
+    var windowFrame: CGRect?
+    var focus: [String: String] = [:]
+    /// Whether the focused element takes typing.
+    var focusIsText = false
+    /// The app's adapter's reading, if it has one: the event kind and its fields.
+    var adapter: (kind: String, fields: [String: Any])?
+}
+
 enum Adapters {
-    /// Read the front app now.
-    static func read() -> Reading {
-        var r = Reading()
-        guard let front = NSWorkspace.shared.frontmostApplication else { return r }
-        r.app = front.localizedName ?? ""
-        r.bundle = front.bundleIdentifier ?? ""
-        let app = AX.app(front.processIdentifier)
+    /// Read the app in front. On the reader queue.
+    static func read(_ front: Front) -> Reading {
+        var r = Reading(app: front.name, bundle: front.bundle, pid: front.pid)
+        let app = AX.app(front.pid)
         if let win = AX.element(app, kAXFocusedWindowAttribute) {
             r.windowTitle = AX.string(win, kAXTitleAttribute) ?? ""
-            if let doc = AX.string(win, kAXDocumentAttribute) { r.document = doc }
+            r.document = AX.string(win, kAXDocumentAttribute) ?? ""
+            r.windowFrame = AX.frame(win)
         }
         if let focused = AX.element(app, kAXFocusedUIElementAttribute) {
-            var f: [String: String] = [:]
-            for (k, v) in AX.describe(focused, valueLimit: 300) { f[k] = "\(v)" }
-            r.focus = f
+            r.focus = AX.describe(focused, valueLimit: 300).mapValues { "\($0)" }
+            r.focusIsText = TextProbe.isEditableText(focused)
         }
-        if let a = adapter(for: front) { r.extra = a(front) }
+        if let kind = kind(of: front) {
+            let fields: [String: Any]
+            switch kind {
+            case "finder": fields = finder()
+            case "page": fields = browser(front)
+            default: fields = desk(front)
+            }
+            r.adapter = (kind, fields)
+        }
         return r
     }
 
-    private static func adapter(for app: NSRunningApplication) -> ((NSRunningApplication) -> [String: Any])? {
-        if app.bundleIdentifier == "com.apple.finder" { return finder }
-        if browsers[app.bundleIdentifier ?? ""] != nil { return browser }
-        if deskCommand(app) != nil { return desk }
+    /// What is under a point: the app and window there (owl's own windows
+    /// looked through) and the element. On the reader queue.
+    static func under(_ p: CGPoint) -> [String: Any] {
+        var f: [String: Any] = [:]
+        let window = AX.window(at: p)
+        if let window, !window.title.isEmpty { f["window"] = window.title }
+        if let el = AX.element(at: p) {
+            f["element"] = AX.describe(el, valueLimit: 160)
+            if let pid = AX.pid(el), let app = NSRunningApplication(processIdentifier: pid)?.localizedName {
+                f["app"] = app
+            }
+        }
+        if f["app"] == nil, let window { f["app"] = window.app }
+        return f
+    }
+
+    /// The field typing went into. On the reader queue.
+    static func focused(_ pid: pid_t) -> [String: Any]? {
+        AX.element(AX.app(pid), kAXFocusedUIElementAttribute).map { AX.describe($0, valueLimit: 400) }
+    }
+
+    private static func kind(of front: Front) -> String? {
+        if front.bundle == "com.apple.finder" { return "finder" }
+        if browsers[front.bundle] != nil { return "page" }
+        if deskCommand(front) != nil { return "desk" }
         return nil
     }
 
@@ -58,15 +121,14 @@ enum Adapters {
     /// whose `desk` subcommand prints what the app is showing: `open ...`,
     /// `picked ...`. That is the best reading there is, in the app's own
     /// words, and it costs nothing to support: the app just has to be one.
-    static func deskCommand(_ app: NSRunningApplication) -> URL? {
-        guard let bundle = app.bundleURL, let name = app.localizedName?.lowercased(), !name.isEmpty
-        else { return nil }
-        let url = bundle.appending(path: "Contents/Resources/\(name)")
+    static func deskCommand(_ front: Front) -> URL? {
+        guard let bundle = front.bundleURL, !front.name.isEmpty else { return nil }
+        let url = bundle.appending(path: "Contents/Resources/\(front.name.lowercased())")
         return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
     }
 
-    private static func desk(_ app: NSRunningApplication) -> [String: Any] {
-        guard let cmd = deskCommand(app) else { return [:] }
+    private static func desk(_ front: Front) -> [String: Any] {
+        guard let cmd = deskCommand(front) else { return [:] }
         let p = Process()
         p.executableURL = cmd
         p.arguments = ["desk"]
@@ -74,9 +136,14 @@ enum Adapters {
         p.standardOutput = pipe
         p.standardError = FileHandle.nullDevice
         do { try p.run() } catch { return [:] }
+        // An app that does not answer inside a second loses this reading.
+        let pid = p.processIdentifier
+        let limit = DispatchWorkItem { kill(pid, SIGKILL) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1, execute: limit)
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
-        guard let text = String(data: data, encoding: .utf8) else { return [:] }
+        limit.cancel()
+        guard p.terminationReason == .exit, let text = String(data: data, encoding: .utf8) else { return [:] }
         var d: [String: Any] = [:]
         for line in text.split(separator: "\n") {
             let t = line.trimmingCharacters(in: .whitespaces)
@@ -89,7 +156,7 @@ enum Adapters {
 
     // MARK: - Finder: the folder in front and the files picked in it
 
-    private static func finder(_ app: NSRunningApplication) -> [String: Any] {
+    private static func finder() -> [String: Any] {
         let script = """
         tell application "Finder"
             set out to ""
@@ -103,7 +170,7 @@ enum Adapters {
             return out
         end tell
         """
-        guard let text = runScript(script) else { return [:] }
+        guard let text = Script.run(script) else { return [:] }
         var lines = text.components(separatedBy: "\n")
         let folder = lines.removeFirst()
         var d: [String: Any] = [:]
@@ -125,25 +192,20 @@ enum Adapters {
         "com.vivaldi.Vivaldi": "Vivaldi",
     ]
 
-    private static func browser(_ app: NSRunningApplication) -> [String: Any] {
-        guard let bundle = app.bundleIdentifier, let name = browsers[bundle] else { return [:] }
-        let script: String
-        if bundle == "com.apple.Safari" {
-            script = """
+    private static func browser(_ front: Front) -> [String: Any] {
+        guard let name = browsers[front.bundle] else { return [:] }
+        let script = front.bundle == "com.apple.Safari" ? """
             tell application "Safari"
                 set t to front document
                 return (URL of t) & linefeed & (name of t)
             end tell
-            """
-        } else {
-            script = """
+            """ : """
             tell application "\(name)"
                 set t to active tab of front window
                 return (URL of t) & linefeed & (title of t)
             end tell
             """
-        }
-        guard let text = runScript(script) else { return [:] }
+        guard let text = Script.run(script) else { return [:] }
         let parts = text.components(separatedBy: "\n")
         var d: [String: Any] = [:]
         if let u = parts.first, !u.isEmpty { d["url"] = u }
@@ -151,24 +213,56 @@ enum Adapters {
         return d
     }
 
-    private static func runScript(_ source: String) -> String? {
+    /// Ask for the Automation grants, one prompt per app, by asking each a
+    /// harmless question. Called from the menu; the questions go on the reader.
+    @MainActor static func requestAutomation() {
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let names = ["Finder"] + browsers.filter { running.contains($0.key) }.map(\.value)
+        Reader.queue.async {
+            for name in names { _ = Script.run("tell application \"\(name)\" to get name") }
+        }
+    }
+}
+
+/// AppleScript, run on the reader queue with a language instance of its own:
+/// AppleScript is thread-safe per instance, and the shared instance belongs to
+/// the main thread. Each script is compiled once, and every Apple event it
+/// sends gives up after two seconds.
+private enum Script {
+    private static let instance = OSALanguage(forName: "AppleScript").map { OSALanguageInstance(language: $0) }
+    private static var compiled: [String: OSAScript] = [:]
+    /// Each distinct failure is logged once: a missing grant would otherwise
+    /// fill the log once a second.
+    private static var reported: Set<String> = []
+
+    static func run(_ source: String) -> String? {
+        dispatchPrecondition(condition: .onQueue(Reader.queue))
+        guard let instance else { return nil }
+        let script: OSAScript
+        if let s = compiled[source] {
+            script = s
+        } else {
+            script = OSAScript(source: "with timeout of 2 seconds\n\(source)\nend timeout",
+                               from: nil, languageInstance: instance, using: [])
+            var error: NSDictionary?
+            guard script.compileAndReturnError(&error) else {
+                report(error)
+                return nil
+            }
+            compiled[source] = script
+        }
         var error: NSDictionary?
-        guard let script = NSAppleScript(source: source) else { return nil }
         let result = script.executeAndReturnError(&error)
-        if let error {
-            Log.line("applescript: \(error[NSAppleScript.errorMessage] ?? error)")
+        if error != nil || result == nil {
+            report(error)
             return nil
         }
-        return result.stringValue
+        return result?.stringValue
     }
 
-    /// Ask for the Automation grants up front, one prompt per app, by running
-    /// a harmless script against each.
-    static func requestAutomation() {
-        _ = runScript("tell application \"Finder\" to get name")
-        for name in browsers.values
-        where NSWorkspace.shared.runningApplications.contains(where: { $0.localizedName == name }) {
-            _ = runScript("tell application \"\(name)\" to get name")
-        }
+    private static func report(_ error: NSDictionary?) {
+        let message = (error?[OSAScriptErrorMessageKey] as? String) ?? "\(error ?? [:])"
+        guard reported.insert(message).inserted else { return }
+        Log.line("applescript: \(message)")
     }
 }

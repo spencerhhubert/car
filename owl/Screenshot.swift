@@ -1,75 +1,72 @@
-import AppKit
 import CoreGraphics
+import Foundation
+import ImageIO
 import ScreenCaptureKit
+import UniformTypeIdentifiers
 
-// Pictures of the focused window, taken when something changed: a new window
-// in front, a click. Stored as JPEG at most ~2 MP, and only when the picture
-// differs from the last one (a 64-bit difference hash).
-final class Screenshot {
+// Pictures of the screen, taken when something changed: a new window in front,
+// a click, a scroll, a drawing. Two kinds: the focused window of an app, which
+// is what most moments are about, and a whole display, for a drawing, which is
+// often about more than one window. owl's own windows are never in a picture;
+// the marks on the screen are drawn into every picture they fall on, with
+// their numbers, by owl itself, so a picture says which mark is which.
+//
+// JPEG, at most ~1.5 MP, and only when it differs from the last picture (a
+// difference hash) unless the moment is worth one regardless. An actor:
+// pictures are asked for from several tasks at once and share that state.
+actor Screenshot {
+    enum Target: Sendable {
+        /// The focused window of an app; `frame` (display space) picks it out
+        /// when the app has several.
+        case window(pid: pid_t, frame: CGRect?)
+        case display(CGDirectDisplayID)
+    }
+
     static var hasPermission: Bool { CGPreflightScreenCaptureAccess() }
     static func requestPermission() { CGRequestScreenCaptureAccess() }
 
+    /// Minimum seconds between two pictures that were not forced.
+    private let minGap: TimeInterval = 0.7
+    private let maxPixels: CGFloat = 1_500_000
     private var lastHash: UInt64 = 0
     private var lastAt: TimeInterval = 0
-    /// Minimum seconds between two stored pictures.
-    var minGap: TimeInterval = 0.7
     private var content: SCShareableContent?
     private var contentAt: TimeInterval = 0
 
-    /// Take one of the front window of `pid`, or the display under the mouse
-    /// when no window can be found. Returns the file name written, or nil when
-    /// nothing changed enough to keep; `force` keeps it however little changed.
-    func take(pid: pid_t, to dir: URL, name: String, force: Bool = false) async -> String? {
+    /// Take one and write it to `dir/name.jpg`. Returns the file name, or nil
+    /// when nothing changed enough to keep (or it could not be taken).
+    func take(_ target: Target, marks: [Mark], into dir: URL, name: String, force: Bool) async -> String? {
         guard Self.hasPermission else { return nil }
         let now = ProcessInfo.processInfo.systemUptime
-        if now - lastAt < minGap { return nil }
-        guard let content = await shareable() else { return nil }
-        let filter: SCContentFilter
-        let size: CGSize
-        if let win = content.windows.first(where: {
-            $0.owningApplication?.processID == pid && $0.isOnScreen && $0.windowLayer == 0
-                && $0.frame.width > 50 && $0.frame.height > 50
-        }) {
-            filter = SCContentFilter(desktopIndependentWindow: win)
-            size = win.frame.size
-        } else {
-            let mouse = NSEvent.mouseLocation
-            let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
-            let id = (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
-            guard let display = content.displays.first(where: { $0.displayID == id }) ?? content.displays.first
-            else { return nil }
-            filter = SCContentFilter(display: display, excludingWindows: [])
-            size = CGSize(width: display.width, height: display.height)
+        if !force {
+            if now - lastAt < minGap { return nil }
+            lastAt = now
         }
+        guard let content = await shareable(), let (filter, rect) = Self.filter(for: target, in: content) else {
+            return nil
+        }
+        let native = CGFloat(filter.pointPixelScale)
+        let scale = native * min(1, (maxPixels / (rect.width * rect.height * native * native)).squareRoot())
         let cfg = SCStreamConfiguration()
-        let scale = min(1.0, (1_500_000 / (size.width * size.height)).squareRoot())
-        let px = (NSScreen.main?.backingScaleFactor ?? 2)
-        cfg.width = Int(size.width * px * scale)
-        cfg.height = Int(size.height * px * scale)
+        cfg.width = max(1, Int(rect.width * scale))
+        cfg.height = max(1, Int(rect.height * scale))
         cfg.showsCursor = true
         cfg.captureResolution = .best
-        let image: CGImage
+        let raw: CGImage
         do {
-            image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
+            raw = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
         } catch {
             Log.line("screenshot failed: \(error.localizedDescription)")
             self.content = nil
             return nil
         }
+        let image = Self.draw(marks, onto: raw, showing: rect) ?? raw
         let hash = Self.dHash(image)
         if !force, Self.hamming(hash, lastHash) < 6 { return nil }
         lastHash = hash
         lastAt = now
-        let rep = NSBitmapImageRep(cgImage: image)
-        guard let data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.65]) else { return nil }
         let file = "\(name).jpg"
-        do {
-            try data.write(to: dir.appending(path: file))
-        } catch {
-            Log.line("screenshot write failed: \(error.localizedDescription)")
-            return nil
-        }
-        return file
+        return Self.writeJPEG(image, to: dir.appending(path: file)) ? file : nil
     }
 
     private func shareable() async -> SCShareableContent? {
@@ -86,16 +83,83 @@ final class Screenshot {
         }
     }
 
+    /// What to capture, and the rectangle of the display space it shows.
+    private static func filter(for target: Target, in content: SCShareableContent) -> (SCContentFilter, CGRect)? {
+        let display: CGDirectDisplayID
+        switch target {
+        case .window(let pid, let frame):
+            let windows = content.windows.filter {
+                $0.owningApplication?.processID == pid && $0.isOnScreen && $0.windowLayer == 0
+                    && $0.frame.width > 50 && $0.frame.height > 50
+            }
+            let chosen = frame.flatMap { f in windows.min { distance($0.frame, f) < distance($1.frame, f) } }
+            if let win = chosen ?? windows.first {
+                return (SCContentFilter(desktopIndependentWindow: win), win.frame)
+            }
+            // No window to speak of (the desktop, a menu): the display the
+            // pointer is on.
+            guard let at = CGEvent(source: nil)?.location, let d = Space.display(at: at) else { return nil }
+            display = d
+        case .display(let d):
+            display = d
+        }
+        guard let d = content.displays.first(where: { $0.displayID == display }) ?? content.displays.first
+        else { return nil }
+        let me = content.applications.filter { $0.processID == getpid() }
+        return (SCContentFilter(display: d, excludingApplications: me, exceptingWindows: []), d.frame)
+    }
+
+    private static func distance(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        abs(a.minX - b.minX) + abs(a.minY - b.minY) + abs(a.width - b.width) + abs(a.height - b.height)
+    }
+
+    /// The marks that fall in `rect` (display space) drawn onto its picture,
+    /// or nil when none do.
+    static func draw(_ marks: [Mark], onto image: CGImage, showing rect: CGRect) -> CGImage? {
+        let on = marks.filter { $0.bounds.insetBy(dx: -16, dy: -16).intersects(rect) }
+        guard !on.isEmpty, rect.width > 0,
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                                  bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                      | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        let (w, h) = (CGFloat(image.width), CGFloat(image.height))
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let scale = w / rect.width
+        for m in on {
+            m.draw(in: ctx, scale: scale) { p in
+                CGPoint(x: (p.x - rect.minX) * scale, y: h - (p.y - rect.minY) * scale)
+            }
+        }
+        return ctx.makeImage()
+    }
+
+    static func writeJPEG(_ image: CGImage, to url: URL) -> Bool {
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
+        else { return false }
+        CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.65] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else {
+            Log.line("picture write failed: \(url.lastPathComponent)")
+            return false
+        }
+        return true
+    }
+
     // 9x8 greyscale, each bit is whether a pixel is brighter than its right
     // neighbour. Unchanged screens read 0-2 bits apart, a new page 20+.
     static func dHash(_ image: CGImage) -> UInt64 {
         let w = 9, h = 8
         var px = [UInt8](repeating: 0, count: w * h)
-        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
-                                  space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
-        else { return 0 }
-        ctx.interpolationQuality = .medium
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let drawn: Bool = px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8,
+                                      bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(),
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
+            ctx.interpolationQuality = .medium
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard drawn else { return 0 }
         var hash: UInt64 = 0
         for y in 0..<h {
             for x in 0..<(w - 1) {

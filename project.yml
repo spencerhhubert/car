@@ -7,14 +7,19 @@ targets:
   owl:
     type: application
     platform: macOS
-    sources: [owl]
+    sources:
+      - owl
+      # `owl guide` prints it.
+      - path: README.md
+        buildPhase: resources
     info:
       path: owl/Info.plist
       properties:
         # Menu bar only. The recording pill is its own floating panel; there is
         # no window to put in the Dock.
         LSUIElement: true
-        CFBundleDisplayName: owl
+        # owl, or owl-dev for the development copy (build.sh sets PRODUCT_NAME).
+        CFBundleDisplayName: $(PRODUCT_NAME)
         NSHumanReadableCopyright: ""
         NSMicrophoneUsageDescription: "owl records your voice for the length of a session you start by holding Option."
         # Finder's selection and a browser's front tab are read with Apple

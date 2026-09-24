@@ -1,19 +1,21 @@
 import Foundation
 
-// A plain file log at ~/Library/Logs/owl.log. Most of what can go wrong here
-// leaves no other trace: a take of silence, a screenshot that never landed, an
-// accessibility call that timed out.
+// A plain file log at ~/Library/Logs/owl.log (owl-dev.log for the development
+// copy). Most of what can go wrong here leaves no other trace: a take of
+// silence, a screenshot that never landed, an accessibility call that timed
+// out.
 enum Log {
     private static let url = FileManager.default
         .urls(for: .libraryDirectory, in: .userDomainMask)[0]
-        .appending(path: "Logs/owl.log")
+        .appending(path: "Logs/\(Config.name).log")
     private static let queue = DispatchQueue(label: "owl.log")
+    /// Used only on `queue`.
+    private static let stamp = ISO8601DateFormatter()
 
     static func line(_ message: String) {
-        let stamp = ISO8601DateFormatter().string(from: Date())
+        let now = Date()
         queue.async {
-            let text = "\(stamp)  \(message)\n"
-            guard let data = text.data(using: .utf8) else { return }
+            guard let data = "\(stamp.string(from: now))  \(message)\n".data(using: .utf8) else { return }
             if let h = try? FileHandle(forWritingTo: url) {
                 defer { try? h.close() }
                 _ = try? h.seekToEnd()
@@ -25,4 +27,11 @@ enum Log {
             }
         }
     }
+}
+
+/// The one error owl throws: a sentence a person can act on.
+struct Failure: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
 }

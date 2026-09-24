@@ -1,126 +1,197 @@
 import AppKit
-import CoreAudio
 import Foundation
 
-// The menu bar app: the owl in the menu bar, the gesture, the session.
+// The menu bar app: the owl in the menu bar, the gesture, the sessions.
+//
+// At most one session records at a time; any number can be transcribing
+// behind it, so a new session starts the moment the last one stops. When one
+// stops, the clipboard gets a note for an agent pointing at it (Pointer.swift),
+// not its words. A session left unfinished by a crash or a quit is finished at
+// the next launch; quitting (the menu, or a plain `kill`) closes the session
+// being recorded properly first.
 @MainActor
 final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var status: NSStatusItem!
     private let menu = NSMenu()
     private var config = Config.load()
-    private let mic = Mic()
-    private let overlay = Overlay()
     private var gesture: Gesture!
-    private var session: Session?
-    private var watcher: Watcher?
-    private var ticker: Timer?
+    private let drawing = Drawing()
+    private lazy var pill = Pill(drawing: drawing,
+                                 onStop: { [weak self] in self?.gesture.abandon(); self?.stop() },
+                                 onDiscard: { [weak self] in self?.discard() })
+    private var recording: Recording?
     private var latched = false
+    /// A start is waiting on the microphone.
+    private var starting = false
+    /// The gesture let go while the start was still waiting.
+    private var stopWhenStarted = false
+    /// Sessions being transcribed, oldest first.
+    private var transcribing: [String] = []
+    /// How the last transcription went, shown for a moment when nothing else is.
+    private var outcome: (phase: Pill.Phase, until: Date)?
+    private var ticker: Timer?
+    private var terminate: DispatchSourceSignal?
     private var models: [OpenRouter.Model] = []
     private var inputs: [AudioInputs.Device] = []
 
+    private var idleTitle: String { Config.isDev ? "🦉dev" : "🦉" }
+
     func applicationDidFinishLaunching(_ note: Notification) {
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        status.button?.title = "🦉"
+        status.button?.title = idleTitle
         menu.delegate = self
         status.menu = menu
         gesture = Gesture(onStart: { [weak self] latched in self?.start(latched: latched) },
                           onStop: { [weak self] in self?.stop() },
-                          onLatch: { [weak self] in self?.latched = true })
+                          onLatch: { [weak self] in self?.latch() })
         gesture.doubleClickEnabled = config.doubleClick
-        if !Gesture.trusted { Gesture.requestTrust() }
-        if config.enabled { gesture.start() }
+        if config.enabled {
+            if !Gesture.trusted { Gesture.requestTrust() }
+            gesture.start()
+        }
         if let data = try? Data(contentsOf: Config.root.appending(path: "models.json")),
            let m = try? JSONDecoder().decode([OpenRouter.Model].self, from: data) { models = m }
-        Log.line("owl up (accessibility \(Gesture.trusted), mic \(Mic.permissionGranted), screen \(Screenshot.hasPermission))")
+        // `kill` is a quit like any other: the session being recorded is
+        // closed, not cut off.
+        signal(SIGTERM, SIG_IGN)
+        let term = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        term.setEventHandler { NSApp.terminate(nil) }
+        term.resume()
+        terminate = term
+        Log.line("\(Config.name) up (accessibility \(Gesture.trusted), mic \(Mic.permissionGranted), " +
+                 "screen \(Screenshot.hasPermission))")
+        finishOrphans()
     }
 
     func applicationWillTerminate(_ note: Notification) {
-        if session != nil { stop() }
+        guard let r = recording else { return }
+        recording = nil
+        r.stopNow()
+        Log.line("session \(r.session.id) closed at quit; the next launch transcribes it")
     }
 
-    // MARK: - a session
+    // MARK: - sessions
 
     private func start(latched: Bool) {
-        guard session == nil else { return }
+        guard recording == nil, !starting else { return }
+        starting = true
+        stopWhenStarted = false
         self.latched = latched
         Task { @MainActor in
-            guard await Mic.requestPermission() else {
-                failed("microphone denied")
+            let allowed = await Mic.requestPermission()
+            starting = false
+            guard allowed else {
                 gesture.abandon()
+                flash(.failed("microphone denied"))
                 return
             }
             do {
-                let s = try Session()
-                let device = config.inputUID.flatMap { AudioInputs.device(withUID: $0)?.id }
-                try mic.start(to: s.dir.appending(path: "audio.m4a"), deviceID: device)
-                s.meta["audioStartMs"] = (mic.elapsedSinceStart(s.t0)) * 1000
-                s.meta["input"] = config.inputName ?? "system default"
-                s.saveMeta()
-                session = s
-                let w = Watcher(session: s)
-                watcher = w
-                w.start()
+                let r = try Recording(config: config, drawing: drawing)
+                recording = r
                 status.button?.title = "🦉●"
                 startTicker()
-                Log.line("session \(s.id) started")
+                refreshPill()
+                Log.line("session \(r.session.id) started")
             } catch {
-                failed(error.localizedDescription)
+                Log.line("session did not start: \(error.localizedDescription)")
                 gesture.abandon()
+                flash(.failed(error.localizedDescription))
+                return
             }
+            if stopWhenStarted { stop() }
         }
     }
 
+    private func latch() {
+        latched = true
+        refreshPill()
+    }
+
     private func stop() {
-        guard let s = session else { return }
-        session = nil
-        ticker?.invalidate(); ticker = nil
-        watcher?.stop(); watcher = nil
-        if let rec = mic.stop() {
-            s.meta["wallSeconds"] = rec.wallSeconds
-            s.meta["soundSeconds"] = rec.soundSeconds
-            s.meta["peakDb"] = Double(rec.peak)
-            s.meta["audioStartMs"] = (rec.startedUptime - s.t0) * 1000
+        if starting {
+            stopWhenStarted = true
+            return
         }
-        s.close()
-        status.button?.title = "🦉"
+        guard let r = recording else { return }
+        recording = nil
         latched = false
-        overlay.show(PillView(state: .finishing("transcribing…")))
-        Log.line("session \(s.id) ended, \(s.count) events")
-        Task { @MainActor in
-            do {
-                let sum = try await Transcribe.run(id: s.id)
-                overlay.show(PillView(state: .finishing("\(sum.words) words · \(s.count) events")))
-            } catch {
-                Log.line("transcribe failed: \(error.localizedDescription)")
-                try? Render.write(id: s.id)
-                overlay.show(PillView(state: .failed(error.localizedDescription)))
-            }
-            try? await Task.sleep(for: .seconds(2.5))
-            if session == nil { overlay.hide() }
+        stopTicker()
+        status.button?.title = idleTitle
+        let s = r.session
+        Pointer.copy(Pointer.text(id: s.id, started: s.startedAt, seconds: Double(s.now) / 1000))
+        finish(s.id) {
+            let s = await r.stop()
+            Log.line("session \(s.id) ended, \(s.count) events")
+            return s.lock
         }
     }
 
     /// The X on the pill: throw the session away.
-    private func cancel() {
-        guard let s = session else { return }
-        session = nil
-        ticker?.invalidate(); ticker = nil
-        watcher?.stop(); watcher = nil
-        _ = mic.stop()
-        s.close()
-        try? FileManager.default.removeItem(at: s.dir)
-        gesture.abandon()
-        status.button?.title = "🦉"
+    private func discard() {
+        guard let r = recording else { return }
+        recording = nil
         latched = false
-        overlay.hide()
-        Log.line("session \(s.id) discarded")
+        stopTicker()
+        status.button?.title = idleTitle
+        gesture.abandon()
+        r.discard()
+        Log.line("session \(r.session.id) discarded")
+        refreshPill()
     }
 
-    private func failed(_ why: String) {
-        overlay.show(PillView(state: .failed(why)))
+    /// Transcribe a session, alongside whatever else is, and say how it went.
+    /// `hold` gets it ready and returns its lock, which this keeps until the
+    /// session is done or failed.
+    private func finish(_ id: String, _ hold: @escaping @MainActor () async -> SessionLock) {
+        transcribing.append(id)
+        refreshPill()
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
-            if session == nil { overlay.hide() }
+            let lock = await hold()
+            let phase: Pill.Phase
+            do {
+                let sum = try await Transcribe.run(id: id)
+                phase = .done("\(sum.words) words · \(Session.meta(id)?.events ?? 0) events")
+            } catch {
+                Log.line("transcribe \(id) failed: \(error.localizedDescription)")
+                phase = .failed(error.localizedDescription)
+            }
+            lock.release()
+            transcribing.removeAll { $0 == id }
+            flash(phase)
+        }
+    }
+
+    /// Sessions a crash or a quit left recording or transcribing, that no one
+    /// is at: finish them now.
+    private func finishOrphans() {
+        for id in Session.list() {
+            guard let m = Session.meta(id), m.status == .recording || m.status == .transcribing,
+                  let lock = SessionLock(Session.dir(id)) else { continue }
+            Log.line("session \(id) was left \(m.status.rawValue); finishing it")
+            finish(id) { lock }
+        }
+    }
+
+    private func flash(_ phase: Pill.Phase) {
+        outcome = (phase, Date().addingTimeInterval(2.5))
+        refreshPill()
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.6))
+            refreshPill()
+        }
+    }
+
+    private func refreshPill() {
+        pill.model.behind = transcribing.count
+        if recording != nil {
+            pill.show(.recording(latched: latched))
+        } else if !transcribing.isEmpty {
+            pill.show(.transcribing(transcribing.count))
+        } else if let o = outcome, o.until > Date() {
+            pill.show(o.phase)
+        } else {
+            outcome = nil
+            pill.hide()
         }
     }
 
@@ -128,11 +199,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ticker?.invalidate()
         ticker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.session != nil else { return }
-                self.overlay.show(PillView(state: .recording(self.mic.elapsed, self.mic.level, latched: self.latched),
-                                           onCancel: { [weak self] in self?.cancel() }))
+                guard let self, let r = self.recording else { return }
+                self.pill.meter.elapsed = r.elapsed
+                self.pill.meter.level = r.level
+                self.pill.follow()
             }
         }
+    }
+
+    private func stopTicker() {
+        ticker?.invalidate()
+        ticker = nil
     }
 
     // MARK: - the menu
@@ -140,14 +217,22 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         config = Config.load()
-        if let s = session {
-            menu.addItem(item("Stop session (\(Render.clock(s.now)))", #selector(menuStop)))
-            menu.addItem(item("Discard session", #selector(menuCancel)))
+        if let r = recording {
+            menu.addItem(item("Stop session (\(Render.clock(r.session.now)))", #selector(menuStop)))
+            menu.addItem(item("Discard session", #selector(menuDiscard)))
         } else {
             menu.addItem(item("Start session", #selector(menuStart)))
         }
+        if !transcribing.isEmpty {
+            let busy = NSMenuItem(title: transcribing.count == 1 ? "Transcribing \(transcribing[0])…"
+                                                                 : "Transcribing \(transcribing.count) sessions…",
+                                  action: nil, keyEquivalent: "")
+            busy.isEnabled = false
+            menu.addItem(busy)
+        }
         menu.addItem(.separator())
         menu.addItem(item("Last session", #selector(openLast)))
+        menu.addItem(item("Copy last session for an agent", #selector(copyLast)))
         menu.addItem(item("Sessions folder", #selector(openSessions)))
         menu.addItem(.separator())
 
@@ -191,7 +276,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             i.state = d.uid == config.inputUID ? .on : .off
             mics.addItem(i)
         }
-        let micItem = NSMenuItem(title: "Microphone: \(config.inputName ?? "system default")", action: nil, keyEquivalent: "")
+        let micItem = NSMenuItem(title: "Microphone: \(config.inputName ?? "system default")", action: nil,
+                                 keyEquivalent: "")
         micItem.submenu = mics
         menu.addItem(micItem)
 
@@ -213,7 +299,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(permItem)
         menu.addItem(item("Open log", #selector(openLog)))
         menu.addItem(.separator())
-        menu.addItem(item("Quit owl", #selector(quit)))
+        menu.addItem(item("Quit \(Config.name)", #selector(quit)))
     }
 
     private func item(_ title: String, _ sel: Selector) -> NSMenuItem {
@@ -222,22 +308,30 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return i
     }
 
-    @objc private func menuStart() { latched = true; start(latched: true) }
+    /// The newest session that is not the one recording.
+    private var lastSession: String? {
+        Session.list().last { $0 != recording?.session.id }
+    }
+
+    @objc private func menuStart() { start(latched: true) }
     @objc private func menuStop() { gesture.abandon(); stop() }
-    @objc private func menuCancel() { cancel() }
+    @objc private func menuDiscard() { discard() }
     @objc private func openSessions() {
         try? FileManager.default.createDirectory(at: Config.sessionsDir, withIntermediateDirectories: true)
         NSWorkspace.shared.open(Config.sessionsDir)
     }
     @objc private func openLast() {
-        guard let id = Session.list().last else { return }
-        let md = Session.dir(id).appending(path: "session.md")
-        if !FileManager.default.fileExists(atPath: md.path) { try? Render.write(id: id) }
-        NSWorkspace.shared.open(md)
+        guard let id = lastSession else { return }
+        try? Render.write(id: id)
+        NSWorkspace.shared.open(Session.dir(id).appending(path: "session.md"))
+    }
+    @objc private func copyLast() {
+        guard let id = lastSession else { return }
+        Pointer.copy(Pointer.text(id: id))
     }
     @objc private func openLog() {
         NSWorkspace.shared.open(FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-            .appending(path: "Logs/owl.log"))
+            .appending(path: "Logs/\(Config.name).log"))
     }
     @objc private func pickTextModel(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
@@ -261,12 +355,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         config.save()
     }
     @objc private func refreshModels() {
-        guard let key = Config.openRouterKey else { failed("no OpenRouter key"); return }
+        guard let key = Config.openRouterKey else { flash(.failed("no OpenRouter key")); return }
         Task { @MainActor in
             do {
                 models = try await OpenRouter.audioModels(key: key)
-                try? JSONEncoder().encode(models).write(to: Config.root.appending(path: "models.json"))
-            } catch { failed(error.localizedDescription) }
+                try JSONEncoder().encode(models).write(to: Config.root.appending(path: "models.json"))
+            } catch { flash(.failed(error.localizedDescription)) }
         }
     }
     @objc private func toggleDoubleClick() {
@@ -277,18 +371,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleEnabled() {
         config.enabled.toggle()
         config.save()
-        config.enabled ? gesture.start() : gesture.stop()
+        if config.enabled {
+            if !Gesture.trusted { Gesture.requestTrust() }
+            gesture.start()
+        } else {
+            gesture.stop()
+        }
     }
     @objc private func permAX() { Gesture.requestTrust() }
     @objc private func permMic() { Task { _ = await Mic.requestPermission() } }
     @objc private func permScreen() { Screenshot.requestPermission() }
     @objc private func permAutomation() { Adapters.requestAutomation() }
     @objc private func quit() { NSApp.terminate(nil) }
-}
-
-extension Mic {
-    /// Seconds from a session's start uptime to the microphone's.
-    func elapsedSinceStart(_ t0: TimeInterval) -> Double {
-        ProcessInfo.processInfo.systemUptime - t0
-    }
 }

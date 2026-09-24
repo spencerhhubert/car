@@ -20,6 +20,10 @@ import ApplicationServices
 // session; a double-click on a file in Finder mid-session does nothing, since
 // opening files is exactly what a session is there to watch.
 //
+// Only ⌥ and clicks are watched all the time. Keys and scrolls matter only
+// while ⌥ is held on its way to a start, so they are watched only then, and
+// owl is not woken by every keystroke and scroll of the day.
+//
 // Needs Accessibility: global monitors are how one app sees another's keys.
 @MainActor
 final class Gesture {
@@ -30,7 +34,10 @@ final class Gesture {
     private let onStart: (_ latched: Bool) -> Void
     private let onStop: () -> Void
     private let onLatch: () -> Void
+    /// ⌥ and clicks, for as long as the gesture is on.
     private var monitors: [Any] = []
+    /// Keys, right clicks and scrolls, while a hold of ⌥ is armed.
+    private var interrupts: [Any] = []
     private var armTask: Task<Void, Never>?
     private var latchTask: Task<Void, Never>?
     private var optionDown = false
@@ -64,19 +71,25 @@ final class Gesture {
 
     func start() {
         stop()
-        let mask: NSEvent.EventTypeMask = [
-            .flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel,
-        ]
-        // Handled synchronously: these arrive on the main thread already, and
-        // a hop through a Task makes the release feel stuck.
-        if let g = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] e in
-            MainActor.assumeIsolated { self?.handle(e) }
-        }) { monitors.append(g) }
-        if let l = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
-            MainActor.assumeIsolated { self?.handle(e) }
-            return e
-        }) { monitors.append(l) }
+        monitors = watch([.flagsChanged, .leftMouseDown])
         Log.line("gesture watching (accessibility trusted: \(Self.trusted))")
+    }
+
+    /// A global and a local monitor for `mask`. Handled synchronously: these
+    /// arrive on the main thread already, and a hop through a Task makes the
+    /// release feel stuck. The local monitor sees events in owl's own windows
+    /// (the menu, the pill, the drawing layer); a double-click there is never
+    /// the gesture.
+    private func watch(_ mask: NSEvent.EventTypeMask) -> [Any] {
+        var out: [Any] = []
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] e in
+            MainActor.assumeIsolated { self?.handle(e, inOwl: false) }
+        }) { out.append(g) }
+        if let l = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
+            MainActor.assumeIsolated { self?.handle(e, inOwl: true) }
+            return e
+        }) { out.append(l) }
+        return out
     }
 
     func stop() {
@@ -88,8 +101,8 @@ final class Gesture {
         optionDown = false
     }
 
-    private func handle(_ event: NSEvent) {
-        if event.type == .leftMouseDown, event.clickCount == 2 { doubleClick(event) }
+    private func handle(_ event: NSEvent, inOwl: Bool) {
+        if event.type == .leftMouseDown, event.clickCount == 2, !inOwl { doubleClick(event) }
         guard event.type == .flagsChanged else {
             if !started { disarm() }
             return
@@ -154,6 +167,7 @@ final class Gesture {
 
     private func arm() {
         disarm()
+        interrupts = watch([.keyDown, .rightMouseDown, .scrollWheel])
         let wait = holdSeconds
         armTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(wait))
@@ -176,22 +190,20 @@ final class Gesture {
     private func disarm() {
         armTask?.cancel(); armTask = nil
         latchTask?.cancel(); latchTask = nil
+        for m in interrupts { NSEvent.removeMonitor(m) }
+        interrupts = []
     }
 }
 
 // Is the thing under the pointer somewhere you can type? Asked of the app
-// under the cursor through the accessibility tree.
+// under the cursor through the accessibility tree, on the spot: the gesture
+// has to answer the double-click it is looking at.
 enum TextProbe {
     private static let textRoles: Set<String> = [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole]
 
+    /// `point` in AppKit's screen coordinates, as NSEvent has it.
     static func editable(at point: CGPoint) -> Bool {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.2)
-        guard let primary = NSScreen.screens.first else { return false }
-        let y = primary.frame.maxY - point.y
-        var hit: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(system, Float(point.x), Float(y), &hit) == .success,
-              let hit else { return false }
+        guard let hit = AX.element(at: Space.fromCocoa(point)) else { return false }
         var element: AXUIElement? = hit
         for _ in 0..<3 {
             guard let e = element else { return false }

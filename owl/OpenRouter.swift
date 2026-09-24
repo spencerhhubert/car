@@ -4,10 +4,6 @@ import Foundation
 enum OpenRouter {
     struct Model: Codable { let id: String; let name: String }
     struct Segment: Codable { var start: Double; var end: Double; var text: String }
-    struct Failure: LocalizedError {
-        let message: String
-        var errorDescription: String? { message }
-    }
 
     private static let url = URL(string: "https://openrouter.ai/api/v1/chat/completions")!
 
@@ -48,7 +44,7 @@ enum OpenRouter {
         }
         guard let data = body.data(using: .utf8),
               let segs = try? JSONDecoder().decode([Segment].self, from: data) else {
-            throw Failure(message: "\(model) did not return a JSON array of segments")
+            throw Failure("\(model) did not return a JSON array of segments")
         }
         return (segs, cost)
     }
@@ -89,14 +85,14 @@ enum OpenRouter {
         guard code == 200 else {
             let msg = ((obj["error"] as? [String: Any])?["message"] as? String)
                 ?? String(data: data, encoding: .utf8)?.prefix(300).description ?? ""
-            throw Failure(message: "openrouter \(code): \(msg)")
+            throw Failure("openrouter \(code): \(msg)")
         }
         if let err = obj["error"] as? [String: Any] {
-            throw Failure(message: "openrouter: \(err["message"] ?? err)")
+            throw Failure("openrouter: \(err["message"] ?? err)")
         }
         guard let choices = obj["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any] else {
-            throw Failure(message: "openrouter: no choices in the reply")
+            throw Failure("openrouter: no choices in the reply")
         }
         var text = ""
         if let s = message["content"] as? String { text = s }
@@ -113,7 +109,7 @@ enum OpenRouter {
         req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         let (data, _) = try await URLSession.shared.data(for: req)
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let list = obj["data"] as? [[String: Any]] else { throw Failure(message: "openrouter: bad models list") }
+              let list = obj["data"] as? [[String: Any]] else { throw Failure("openrouter: bad models list") }
         return list.compactMap { m in
             guard let id = m["id"] as? String,
                   let arch = m["architecture"] as? [String: Any],

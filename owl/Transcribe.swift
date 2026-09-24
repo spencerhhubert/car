@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 // The pipeline that turns a finished session's sound into timed words.
@@ -25,21 +26,45 @@ enum Transcribe {
         var note = ""
     }
 
+    /// Transcribe a session and record how it went in its state: done, or
+    /// failed with the reason. The caller holds the session's lock.
     static func run(id: String, options: Options = Options()) async throws -> Summary {
-        let dir = Session.dir(id)
-        var meta = Session.meta(id)
-        let audio = dir.appending(path: "audio.m4a")
-        guard FileManager.default.fileExists(atPath: audio.path) else {
-            throw OpenRouter.Failure(message: "session \(id) has no audio")
+        do {
+            return try await transcribe(id: id, options: options)
+        } catch {
+            if var meta = Session.meta(id) {
+                meta.state = .failed
+                meta.error = error.localizedDescription
+                try? Session.save(meta)
+            }
+            try? Render.write(id: id)
+            throw error
         }
-        let duration = (meta["soundSeconds"] as? Double) ?? 0
+    }
+
+    private static func transcribe(id: String, options: Options) async throws -> Summary {
+        let dir = Session.dir(id)
+        guard var meta = Session.meta(id) else { throw Failure("session \(id) has no meta.json") }
+        let wasRecording = meta.status == .recording
+        meta.state = .transcribing
+        meta.error = nil
+        try Session.save(meta)
+        let audio = dir.appending(path: "audio.m4a")
+        guard FileManager.default.fileExists(atPath: audio.path) else { throw Failure("session \(id) has no audio") }
+        // A take owl never got to close (it stopped mid-recording) has no
+        // index at the end of the file and cannot be read at all.
+        guard let sound = try? AVAudioFile(forReading: audio) else {
+            throw Failure(wasRecording ? "owl stopped while this session was recording; its sound was never finished"
+                                       : "audio.m4a cannot be read")
+        }
+        let duration = meta.soundSeconds ?? Double(sound.length) / sound.fileFormat.sampleRate
         var summary = Summary()
 
         // 2, first: the timed words are needed whether or not a text model runs.
         let timed: [AppleTimes.Word]
         if options.timeSource.hasPrefix("openrouter:") {
             let model = String(options.timeSource.dropFirst("openrouter:".count))
-            guard let key = Config.openRouterKey else { throw OpenRouter.Failure(message: "no OpenRouter key") }
+            guard let key = Config.openRouterKey else { throw Failure("no OpenRouter key") }
             let (data, format) = try upload(audio)
             let (segs, cost) = try await OpenRouter.timedSegments(audio: data, format: format, model: model, key: key)
             timed = segmentsToWords(segs)
@@ -54,7 +79,7 @@ enum Transcribe {
         // the floor is not sent, and an answer with more words than a person
         // can say in the time is thrown away.
         var text: String
-        let peak = (meta["peakDb"] as? Double) ?? 0
+        let peak = meta.peakDb ?? 0
         if peak < -60 {
             text = ""
             summary.textModel = "none"
@@ -97,8 +122,8 @@ enum Transcribe {
         // Onto the session clock. The microphone's clock and the machine's
         // drift apart by parts per million; the ratio of wall time to sound
         // time over the take corrects it.
-        let audioStart = (meta["audioStartMs"] as? Double) ?? 0
-        let wall = (meta["wallSeconds"] as? Double) ?? duration
+        let audioStart = meta.audioStartMs ?? 0
+        let wall = meta.wallSeconds ?? duration
         var scale = duration > 0 ? wall / duration : 1
         if !(0.98...1.02).contains(scale) { scale = 1 }
         let out: [[String: Any]] = words.map {
@@ -114,13 +139,13 @@ enum Transcribe {
                                   "clockScale": scale]
         try JSONSerialization.data(withJSONObject: doc, options: [.prettyPrinted, .sortedKeys])
             .write(to: dir.appending(path: "words.json"))
-        meta["textModel"] = summary.textModel
-        meta["timeSource"] = summary.timeSource
-        meta["note"] = summary.note.isEmpty ? nil : summary.note
-        meta["unverified"] = unverified ? true : nil
-        meta["cost"] = ((meta["cost"] as? Double) ?? 0) + summary.cost
-        try JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys])
-            .write(to: dir.appending(path: "meta.json"))
+        meta.textModel = summary.textModel
+        meta.timeSource = summary.timeSource
+        meta.note = summary.note.isEmpty ? nil : summary.note
+        meta.unverified = unverified ? true : nil
+        meta.cost = (meta.cost ?? 0) + summary.cost
+        meta.state = .done
+        try Session.save(meta)
 
         // 4: the timeline.
         try Render.write(id: id)
@@ -134,11 +159,11 @@ enum Transcribe {
     static func bench(id: String, model: String) async throws -> String {
         let dir = Session.dir(id)
         let audio = dir.appending(path: "audio.m4a")
-        guard let key = Config.openRouterKey else { throw OpenRouter.Failure(message: "no OpenRouter key") }
-        let duration = (Session.meta(id)["soundSeconds"] as? Double) ?? 0
+        guard let key = Config.openRouterKey else { throw Failure("no OpenRouter key") }
+        let duration = Session.meta(id)?.soundSeconds ?? 0
         let text = (try? String(contentsOf: dir.appending(path: "transcript.txt"), encoding: .utf8)) ?? ""
         let tokens = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        guard !tokens.isEmpty else { throw OpenRouter.Failure(message: "transcribe the session first") }
+        guard !tokens.isEmpty else { throw Failure("transcribe the session first") }
         let apple = try await AppleTimes.words(url: audio)
         let (data, format) = try upload(audio)
         let (segs, cost) = try await OpenRouter.timedSegments(audio: data, format: format, model: model, key: key)

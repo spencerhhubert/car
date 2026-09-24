@@ -1,39 +1,39 @@
-name: owl
+name: car
 options:
-  bundleIdPrefix: com.owl
+  bundleIdPrefix: com.car
   deploymentTarget:
     macOS: "26.0"
 packages:
-  OwlKit:
-    path: OwlKit
+  CarKit:
+    path: CarKit
 targets:
-  owl:
+  car:
     type: application
     platform: macOS
     sources:
       - App
-      # `owl guide` prints it.
+      # `car guide` prints it.
       - path: docs/guide.md
         buildPhase: resources
     dependencies:
-      - package: OwlKit
+      - package: CarKit
     info:
       path: App/Info.plist
       properties:
-        # Menu bar only. The recording pill is its own floating panel; there is
-        # no window to put in the Dock.
+        # Starts in the menu bar alone; while one of its windows is open it is
+        # in the Dock too (Windows.swift switches it).
         LSUIElement: true
-        # owl, or owl-dev for the development copy (build.sh sets PRODUCT_NAME).
+        # car, or car-dev for the development copy (build.sh sets PRODUCT_NAME).
         CFBundleDisplayName: $(PRODUCT_NAME)
         NSHumanReadableCopyright: ""
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSMicrophoneUsageDescription: "owl records your voice for as long as a session you start with ⌘⇧R runs."
+        NSMicrophoneUsageDescription: "car records your voice for as long as a session you start runs."
         # Finder's selection and a browser's front tab are read with Apple
         # events when the accessibility tree does not carry them.
-        NSAppleEventsUsageDescription: "owl asks Finder which files you have selected and a browser which page is open, so a session can say what was in front of you."
+        NSAppleEventsUsageDescription: "car asks Finder which files you have selected and a browser which page is open, so a session can say what was in front of you."
     entitlements:
-      path: App/owl.entitlements
+      path: App/car.entitlements
       properties:
         com.apple.security.app-sandbox: false
         # Hardened runtime gates the microphone and Apple events behind these
@@ -43,8 +43,8 @@ targets:
         com.apple.security.automation.apple-events: true
     settings:
       base:
-        PRODUCT_NAME: owl
-        PRODUCT_BUNDLE_IDENTIFIER: com.owl.mac
+        PRODUCT_NAME: car
+        PRODUCT_BUNDLE_IDENTIFIER: com.car.mac
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Apple Development"
         ENABLE_HARDENED_RUNTIME: YES

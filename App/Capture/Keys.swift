@@ -1,37 +1,37 @@
 import AppKit
-import Carbon.HIToolbox
-import OwlKit
+import CarKit
 
-// owl's two keys, and nothing else starts, stops or marks anything:
+// car's keys are one gesture, ⌥ tapped twice, and what is held with it says
+// what it does. Nothing else starts, stops or marks anything:
 //
-//   ⌘⇧R          start a session, or stop the one running. A system hot key:
-//                owl owns the chord outright, so the app in front never sees
-//                it (in a browser it would reload the page). Needs no grant.
-//   ⌥ ⌥          two quick taps of ⌥ alone set a marker. Seen with global
-//                monitors, so it needs Accessibility; a tap is ⌥ down and up
-//                inside `tapLength` with nothing joining it, and the second
-//                tap has to come inside the system's double-click interval.
+//   ⌘ ⌥ ⌥    start a session, or stop the one running
+//   ⌥ ⌥      set a marker
+//   ⇧ ⌥ ⌥    quick dictation: what was just said, as text on the clipboard
 //
-// Only ⌥ itself is watched all the time. Keys, clicks and scrolls matter only
-// while ⌥ is down (anything joining it spoils the tap), so they are watched
-// only then, and owl is not woken by every keystroke of the day.
+// A tap is ⌥ down and up inside `tapLength` with nothing joining it; the
+// second has to come inside the system's double-click interval, with the same
+// key held (⌘, ⇧ or neither) through both. Taps are seen with global monitors,
+// so they need Accessibility. Only the modifier keys are watched all the
+// time. Keys, clicks and scrolls matter only while ⌥ is down (anything
+// joining it spoils the tap), so they are watched only then, and car is not
+// woken by every keystroke of the day.
 @MainActor
 final class Keys {
+    enum Gesture { case toggle, marker, dictation }
+
     static let tapLength: TimeInterval = 0.35
 
-    private let onToggle: () -> Void
-    private let onMarker: () -> Void
-    private var hotKey: EventHotKeyRef?
-    private var handler: EventHandlerRef?
+    private let onGesture: (Gesture) -> Void
     private var monitors: [Any] = []
     private var interrupts: [Any] = []
     private var downAt: TimeInterval?
+    /// ⌘ or ⇧, whichever was held when ⌥ went down.
+    private var held: NSEvent.ModifierFlags = []
     private var spoiled = false
-    private var lastTap: TimeInterval?
+    private var lastTap: (at: TimeInterval, held: NSEvent.ModifierFlags)?
 
-    init(onToggle: @escaping () -> Void, onMarker: @escaping () -> Void) {
-        self.onToggle = onToggle
-        self.onMarker = onMarker
+    init(onGesture: @escaping (Gesture) -> Void) {
+        self.onGesture = onGesture
     }
 
     static var trusted: Bool { AXIsProcessTrusted() }
@@ -43,44 +43,16 @@ final class Keys {
 
     func start() {
         stop()
-        registerHotKey()
         monitors = watch(.flagsChanged)
-        Log.line("keys on: ⌘⇧R, ⌥ ⌥ (accessibility \(Self.trusted))")
+        Log.line("keys on: ⌘ ⌥ ⌥, ⌥ ⌥, ⇧ ⌥ ⌥ (accessibility \(Self.trusted))")
     }
 
     func stop() {
-        if let hotKey { UnregisterEventHotKey(hotKey) }
-        if let handler { RemoveEventHandler(handler) }
-        hotKey = nil
-        handler = nil
         for m in monitors { NSEvent.removeMonitor(m) }
         monitors = []
         endTap()
+        lastTap = nil
     }
-
-    // MARK: - ⌘⇧R
-
-    private func registerHotKey() {
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let me = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, refcon in
-            guard let refcon else { return noErr }
-            let keys = Unmanaged<Keys>.fromOpaque(refcon).takeUnretainedValue()
-            MainActor.assumeIsolated { keys.onToggle() }
-            return noErr
-        }, 1, &spec, me, &handler)
-        let id = EventHotKeyID(signature: 0x6F776C21 /* owl! */, id: 1)
-        let status = RegisterEventHotKey(UInt32(kVK_ANSI_R), UInt32(cmdKey | shiftKey), id,
-                                         GetApplicationEventTarget(), 0, &hotKey)
-        // macOS lets two apps hold the same hot key, and both are told; the
-        // dev copy keeps its keys off by default for that reason.
-        if status != noErr {
-            Log.line("⌘⇧R could not be registered (OSStatus \(status)); start sessions from the menu")
-            hotKey = nil
-        }
-    }
-
-    // MARK: - ⌥ ⌥
 
     private func watch(_ mask: NSEvent.EventTypeMask) -> [Any] {
         var out: [Any] = []
@@ -103,26 +75,31 @@ final class Keys {
         }
         let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let option = flags.contains(.option)
-        let others = !flags.intersection([.command, .control, .shift, .function]).isEmpty
+        let with = flags.intersection([.command, .shift])
+        // ⌃ and fn never go with a tap, and neither do ⌘ and ⇧ together.
+        let wrong = !flags.intersection([.control, .function]).isEmpty || with == [.command, .shift]
         let now = ProcessInfo.processInfo.systemUptime
         if option, downAt == nil {
             downAt = now
-            spoiled = others
+            held = with
+            spoiled = wrong
             interrupts = watch([.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel])
-        } else if option, others {
-            spoiled = true
-        } else if !option, let down = downAt {
-            let tap = !spoiled && !others && now - down <= Self.tapLength
+        } else if option {
+            // Another modifier went down or up while ⌥ was: not a tap.
+            if with != held || wrong { spoiled = true }
+        } else if let down = downAt {
+            let tap = !spoiled && !wrong && with == held && now - down <= Self.tapLength
+            let key = held
             endTap()
             guard tap else {
                 lastTap = nil
                 return
             }
-            if let last = lastTap, now - last <= NSEvent.doubleClickInterval {
+            if let last = lastTap, last.held == key, now - last.at <= NSEvent.doubleClickInterval {
                 lastTap = nil
-                onMarker()
+                onGesture(key.contains(.command) ? .toggle : key.contains(.shift) ? .dictation : .marker)
             } else {
-                lastTap = now
+                lastTap = (now, key)
             }
         }
     }

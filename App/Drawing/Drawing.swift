@@ -1,10 +1,11 @@
 import AppKit
-import OwlKit
+import Observation
+import CarKit
 
 // The drawing layer: the tool in hand, the ink, the marks of the session being
 // recorded, and the transparent windows they are drawn on. The pill
 // (Pill.swift) is where a tool and an ink are picked; what a mark is, and
-// when one fades, are OwlKit's Marks.swift and Fading.swift.
+// when one fades, are CarKit's Marks.swift and Fading.swift.
 //
 // With no tool in hand the layer lets every click through to the apps and only
 // shows the marks. With one, it takes the mouse on every screen: a drag draws,
@@ -17,29 +18,29 @@ import OwlKit
 // fades at once. A mark leaves the session's record the moment it starts to
 // fade, so no picture shows it over something it was not about. The windows
 // exist only while there is something to show, and go when the session does.
-@MainActor
-final class Drawing: ObservableObject {
+@MainActor @Observable
+final class Drawing {
     /// The tool in hand, or nil when the pointer belongs to the apps.
-    @Published private(set) var tool: Tool?
+    private(set) var tool: Tool?
     /// One ink for every tool, kept from one session to the next.
-    @Published var ink: Ink = .red
+    var ink: Ink = .red
     /// The marks on the screen and on the record: drawn, not yet fading.
-    @Published private(set) var marks: [Mark] = []
+    private(set) var marks: [Mark] = []
 
-    private var session: Session?
-    private var next = 1
-    private var live: Mark?
+    @ObservationIgnored private var session: Session?
+    @ObservationIgnored private var next = 1
+    @ObservationIgnored private var live: Mark?
     /// Marks fading out: still drawn, no longer on the record, gone at `until`.
-    private var leaving: [Int: (mark: Mark, until: Date)] = [:]
+    @ObservationIgnored private var leaving: [Int: (mark: Mark, until: Date)] = [:]
     /// Each mark's hold, then its fade.
-    private var timers: [Int: Task<Void, Never>] = [:]
-    private var onMark: (Mark) -> Void = { _ in }
-    private var onFade: (Mark, Fade) -> Void = { _, _ in }
-    private var onClear: ([Mark]) -> Void = { _ in }
-    private lazy var change = ScreenChange { [weak self] n in self?.fade(n, over: Fading.quickly, because: .screen) }
-    private var windows: [CanvasWindow] = []
-    private var escape: EscapeTap?
-    private var screens: NSObjectProtocol?
+    @ObservationIgnored private var timers: [Int: Task<Void, Never>] = [:]
+    @ObservationIgnored private var onMark: (Mark) -> Void = { _ in }
+    @ObservationIgnored private var onFade: (Mark, Fade) -> Void = { _, _ in }
+    @ObservationIgnored private var onClear: ([Mark]) -> Void = { _ in }
+    @ObservationIgnored private lazy var change = ScreenChange { [weak self] n in self?.fade(n, over: Fading.quickly, because: .screen) }
+    @ObservationIgnored private var windows: [CanvasWindow] = []
+    @ObservationIgnored private var escape: EscapeTap?
+    @ObservationIgnored private var screens: NSObjectProtocol?
 
     /// How many marks this session has made.
     var drawn: Int { next - 1 }

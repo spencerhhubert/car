@@ -2,16 +2,16 @@ import CoreMedia
 import CoreVideo
 import Foundation
 @preconcurrency import ScreenCaptureKit
-import OwlKit
+import CarKit
 
 // Watches the screen under the marks and says when what a mark was drawn on
 // has changed a lot: another tab, a scroll, a model turned. One small, slow
 // ScreenCaptureKit stream per display that has marks: a third of the
 // display's size, at most five frames a second, and a frame only when
-// something on it changed. owl's own windows and the pointer are left out,
+// something on it changed. car's own windows and the pointer are left out,
 // so the marks never count. Nothing runs while there are no marks, and
 // without Screen Recording nothing runs at all (marks then only fade with
-// time). What counts as a change is OwlKit's Fading.swift.
+// time). What counts as a change is CarKit's Fading.swift.
 final class ScreenChange: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     private struct Watched {
         let display: CGDirectDisplayID
@@ -31,7 +31,7 @@ final class ScreenChange: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked
         }
     }
 
-    private let queue = DispatchQueue(label: "owl.screen-change", qos: .utility)
+    private let queue = DispatchQueue(label: "car.screen-change", qos: .utility)
     private let onChanged: @MainActor (Int) -> Void
     // Everything below is touched only on `queue`.
     private var watched: [Int: Watched] = [:]

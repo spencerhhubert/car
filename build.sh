@@ -1,17 +1,17 @@
 #!/bin/bash
-# Build, sign and install owl on this Mac. Two copies, side by side:
+# Build, sign and install car on this Mac. Two copies, side by side:
 #
-#   ./build.sh            the development copy: /Applications/owl-dev.app and
-#                         the owl-dev command, with its own catalog, sessions,
+#   ./build.sh            the development copy: /Applications/car-dev.app and
+#                         the car-dev command, with its own catalog, sessions,
 #                         settings, log and permissions (Application
-#                         Support/owl-dev). Its keys are off until turned on
-#                         from its menu. Only owl-dev is stopped or replaced.
-#   ./build.sh release    the owl in use: /Applications/owl.app and the owl
+#                         Support/car-dev). Its keys are off until turned on
+#                         from its menu. Only car-dev is stopped or replaced.
+#   ./build.sh release    the car in use: /Applications/car.app and the car
 #                         command. Refuses while it is recording or
 #                         transcribing; otherwise quits it (a quit closes a
 #                         session properly) and swaps in the new build.
 #
-# owl is not distributed as a download: whoever wants it builds it with this.
+# car is not distributed as a download: whoever wants it builds it with this.
 # Each copy is installed at a fixed path and signed with a stable identity on
 # purpose: macOS keys the Accessibility, Microphone, Screen Recording and
 # Automation grants to bundle id + signing identity + path, and a path that
@@ -26,8 +26,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export PATH="/opt/homebrew/bin:$PATH"
 
 case "${1:-dev}" in
-    dev) NAME=owl-dev; BUNDLE_ID=com.owl.mac.dev ;;
-    release) NAME=owl; BUNDLE_ID=com.owl.mac ;;
+    dev) NAME=car-dev; BUNDLE_ID=com.car.mac.dev ;;
+    release) NAME=car; BUNDLE_ID=com.car.mac ;;
     *) echo "usage: ./build.sh [release]" >&2; exit 2 ;;
 esac
 APP="/Applications/$NAME.app"
@@ -44,8 +44,8 @@ cd "$HERE"
 [ -d App/Assets.xcassets ] || swift tools/make-icon.swift
 xcodegen >/dev/null
 
-echo "==> testing OwlKit"
-swift test --package-path OwlKit -q 2>&1 | tail -5 || { echo "tests failed; nothing installed" >&2; exit 1; }
+echo "==> testing CarKit"
+swift test --package-path CarKit -q 2>&1 | tail -5 || { echo "tests failed; nothing installed" >&2; exit 1; }
 
 echo "==> building $NAME"
 if [ -n "$IDENTITY" ]; then
@@ -55,7 +55,7 @@ else
 fi
 LOG="$DERIVED/build.log"
 mkdir -p "$DERIVED"
-if ! xcodebuild -project owl.xcodeproj -scheme owl -configuration Release -derivedDataPath "$DERIVED" \
+if ! xcodebuild -project car.xcodeproj -scheme car -configuration Release -derivedDataPath "$DERIVED" \
         PRODUCT_NAME="$NAME" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" CODE_SIGN_STYLE=Manual \
         MARKETING_VERSION="$(git -C "$HERE" describe --always --dirty)" \
         "${SIGNING[@]}" build >"$LOG" 2>&1; then
@@ -75,8 +75,8 @@ if ! "$BUILT/Contents/MacOS/$NAME" status >/dev/null; then
     exit 1
 fi
 
-# Quit the running copy, found by bundle id so an `owl session` someone is
-# waiting on is never touched. SIGTERM is a quit: owl closes a session that
+# Quit the running copy, found by bundle id so an `car session` someone is
+# waiting on is never touched. SIGTERM is a quit: car closes a session that
 # started in the last moment rather than cutting it off.
 PID="$(lsappinfo info -only pid -app "$BUNDLE_ID" | sed -nE 's/.*"pid"=([0-9]+).*/\1/p')"
 if [ -n "$PID" ]; then
@@ -93,7 +93,7 @@ rm -rf "$APP"
 cp -R "$BUILT" "$APP"
 SIGN="${IDENTITY:--}"
 echo "==> signing $APP"
-codesign --force --deep --options runtime --entitlements "$HERE/App/owl.entitlements" --sign "$SIGN" "$APP"
+codesign --force --deep --options runtime --entitlements "$HERE/App/car.entitlements" --sign "$SIGN" "$APP"
 codesign --verify --strict "$APP"
 
 echo "==> installed $APP; it links $HOME/.local/bin/$NAME when it starts"

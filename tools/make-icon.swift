@@ -1,4 +1,4 @@
-// Render the app icon: the owl on a dark field, one PNG per macOS icon size.
+// Render the app icon: the car on a dark field, one PNG per macOS icon size.
 //
 //     swift tools/make-icon.swift        (from the repo root)
 //
@@ -22,9 +22,9 @@ func render(_ px: Int) -> Data {
     let box = NSRect(x: inset, y: inset, width: n - 2 * inset, height: n - 2 * inset)
     NSColor(calibratedRed: 0.09, green: 0.10, blue: 0.13, alpha: 1).setFill()
     NSBezierPath(roundedRect: box, xRadius: box.width * 0.225, yRadius: box.width * 0.225).fill()
-    let text = NSAttributedString(string: "🦉", attributes: [.font: NSFont.systemFont(ofSize: n * 0.58)])
+    let text = NSAttributedString(string: "🏎️", attributes: [.font: NSFont.systemFont(ofSize: n * 0.58)])
     let size = text.size()
-    text.draw(at: NSPoint(x: (n - size.width) / 2, y: (n - size.height) / 2 + n * 0.01))
+    text.draw(at: NSPoint(x: (n - size.width) / 2, y: (n - size.height) / 2 + n * 0.075))
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
 }

@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
-import OwlKit
+import CarKit
 import OSAKit
 
 // What is in front of the person, read two ways at once.
@@ -21,7 +21,7 @@ import OSAKit
 /// The one queue that talks to other apps. Serial, so readings arrive in the
 /// order they were asked for.
 enum Reader {
-    static let queue = DispatchQueue(label: "owl.reader", qos: .userInitiated)
+    static let queue = DispatchQueue(label: "car.reader", qos: .userInitiated)
 
     /// Do `work` on the queue, then hand its result to the main thread.
     static func run<T>(_ work: @escaping () -> T, then: @escaping @MainActor (T) -> Void) {
@@ -85,7 +85,7 @@ enum Adapters {
         return r
     }
 
-    /// What is under a point: the app and window there (owl's own windows
+    /// What is under a point: the app and window there (car's own windows
     /// looked through) and the element. On the reader queue.
     static func under(_ p: CGPoint) -> [String: Any] {
         var f: [String: Any] = [:]

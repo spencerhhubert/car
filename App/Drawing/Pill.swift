@@ -1,15 +1,15 @@
 import AppKit
-import Combine
-import OwlKit
+import Observation
+import CarKit
 import SwiftUI
 
 // The pill at the bottom of the screen. A session runs for hours, so while it
-// records the pill is a dot (🦉 ●, and the tool in hand if there is one), and
+// records the pill is a dot (🏎️ ●, and the tool in hand if there is one), and
 // opens into the toolbar while the pointer is on it: the time and level, the
 // pen, arrow, circle and rectangle, the inks, and wiping the drawings. It
-// says a word when something happens ("marker 3 · copied"). Only ⌘⇧R stops a
-// session; discarding one is in the menu, behind a question. When nothing is
-// recording it says how the last transcription went, then goes.
+// says a word when something happens ("marker 3 · copied"). Only ⌘ ⌥ ⌥ stops
+// a session; discarding one is in the menu, behind a question. When nothing
+// is recording it says how the last transcription went, then goes.
 //
 // It sits over whatever app is in use, so it never takes focus (a
 // non-activating panel), joins every space, sits above the drawing layer so
@@ -25,19 +25,21 @@ final class Pill {
         case said(String, ok: Bool)
     }
 
-    final class Model: ObservableObject {
-        @Published var phase: Phase = .recording
+    @MainActor @Observable
+    final class Model {
+        var phase: Phase = .recording
         /// Open into the toolbar: the pointer is on the pill.
-        @Published var open = false
+        var open = false
         /// A moment's word while recording.
-        @Published var note: String?
+        var note: String?
     }
 
     /// Ten times a second while the toolbar is open: kept apart so the
     /// ticking redraws the clock and the level, not the toolbar.
-    final class Meter: ObservableObject {
-        @Published var elapsed: Double = 0
-        @Published var level: Float = -160
+    @MainActor @Observable
+    final class Meter {
+        var elapsed: Double = 0
+        var level: Float = -160
     }
 
     let model = Model()
@@ -50,13 +52,13 @@ final class Pill {
     private var follower: Timer?
     private var closing: Task<Void, Never>?
     private var noteTask: Task<Void, Never>?
-    private var watch: AnyCancellable?
+    private var watch: Task<Void, Never>?
 
     init(drawing: Drawing) {
         self.drawing = drawing
         // A tool picked or put down changes the dot's size.
-        watch = drawing.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.place(force: false) } }
+        watch = Task { [weak self] in
+            for await _ in Observations({ drawing.tool == nil }) { self?.place(force: false) }
         }
     }
 
@@ -89,13 +91,13 @@ final class Pill {
         model.note = nil
     }
 
-    /// A word on the pill for a moment, while recording.
-    func say(_ note: String) {
+    /// A word on the pill while recording, for `seconds` or until the next.
+    func say(_ note: String, for seconds: Double = 2) {
         model.note = note
         place(force: false)
         noteTask?.cancel()
         noteTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled, let self else { return }
             self.model.note = nil
             self.place(force: false)
@@ -216,9 +218,9 @@ private final class PillHostingView: NSHostingView<PillView> {
 }
 
 private struct PillView: View {
-    @ObservedObject var model: Pill.Model
+    let model: Pill.Model
     let meter: Pill.Meter
-    @ObservedObject var drawing: Drawing
+    let drawing: Drawing
 
     var body: some View {
         HStack(spacing: 8) {
@@ -243,7 +245,7 @@ private struct PillView: View {
 
     private func message(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12.5, weight: .medium, design: .rounded))
+            .font(TextStyle.hud.font)
             .lineLimit(1)
             .truncationMode(.tail)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -251,7 +253,7 @@ private struct PillView: View {
 
     @ViewBuilder
     private var dot: some View {
-        Text("🦉").font(.system(size: 15))
+        Text("🏎️").font(.system(size: 15))
         Circle().fill(.red).frame(width: 8, height: 8)
         if let tool = drawing.tool {
             Image(systemName: tool.symbol)
@@ -263,7 +265,7 @@ private struct PillView: View {
 
     @ViewBuilder
     private var toolbar: some View {
-        Text("🦉").font(.system(size: 16)).help("recording: ⌘⇧R stops, ⌥ ⌥ sets a marker")
+        Text("🏎️").font(.system(size: 16)).help("recording: ⌘ ⌥ ⌥ stops, ⌥ ⌥ sets a marker, ⇧ ⌥ ⌥ copies what you just said")
         MeterView(meter: meter)
         Divider().frame(height: 26)
         HStack(spacing: 2) {
@@ -314,12 +316,12 @@ private struct PillView: View {
 }
 
 private struct MeterView: View {
-    @ObservedObject var meter: Pill.Meter
+    let meter: Pill.Meter
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(Self.clock(meter.elapsed))
-                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .font(TextStyle.hud.font)
                 .monospacedDigit()
             LevelBar(db: meter.level)
         }

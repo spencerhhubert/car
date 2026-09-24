@@ -2,63 +2,62 @@
 
 ## Where it stands
 
-owl records sessions meant to run for hours. ⌘⇧R starts and stops one;
-⌥ ⌥ sets a marker, which cuts the sound there and puts
-`owl marker N set at <time> in session <id>` on the clipboard for an agent,
-which reads it with `owl marker` (skill: `skill/SKILL.md`). The sound is
+car (continuous action recording; it was called owl until 2026-09-24)
+records sessions meant to run for hours. One gesture does everything: ⌥
+tapped twice, with ⌘ held to start or stop a session, alone to set a marker
+(the sound is cut there and `car marker N set at <time> in session <id>` goes
+on the clipboard for an agent), with ⇧ held for quick dictation (what was
+said since the last long pause, as text on the clipboard). The sound is
 recorded in chunks of about three minutes, cut at pauses and transcribed as
-they close. The catalog (`owl.sqlite`) holds every session, chunk, word,
-event, marker, cost, and where each file is. Drawing on the screen, the
-reader queue and the dev copy are as before. The code is split into OwlKit
-(a tested Swift package: store, transcription, timeline, marks) and the app
-(capture, drawing, the menu, the command).
+they close; whether anyone spoke is decided by car's own voice detection,
+and only the voice goes to the models (a remote one on OpenRouter writes the
+words, Apple's on-device one keeps time; they run side by side). The catalog
+(`car.sqlite`) holds every session, chunk, word, event, marker, cost, and
+where each file is.
+
+Beside the menu bar there are now two windows: the sessions, read as a
+script (words, what was done around them, the pictures, live while
+recording, a picture big on a click), and Settings, which took everything
+that was a choice out of the menu. How they look and how their code is kept
+from breaking is `docs/design-system/`; `tools/viewcheck` renders them to
+pictures for checking.
 
 Verified:
-- OwlKit's tests (`swift test --package-path OwlKit`): alignment, onset
-  monotonicity, remarks with drawings and markers, the clock, moments,
-  pointer lines, mark geometry, the fading test, the catalog round trip.
-- End to end without a microphone: a scratch program played the app (three
-  `say -o` chunks, a marker after the second, holding the lock). `owl-dev
-  marker` waited for the second chunk's words and printed only what came
-  before the marker; `owl-dev session` then took over the chunk the "crashed"
-  app left and finished the session; ranges and `owl-dev words` work.
-- The screen-change test against pictures of real pages.
-- owl-dev's older sessions were imported into its catalog.
+- CarKit's tests (`swift test --package-path CarKit`): alignment, onsets,
+  remarks with drawings and markers, the clock, moments, pointer lines, mark
+  geometry, fading, the catalog, and the script's rows (what goes near a
+  remark, words still to come, markers, repeats folding, long gaps) and
+  quick dictation's stretch.
+- The windows rendered from a real session in light and dark
+  (`tools/viewcheck`): the script, the sidebar rows, the picture viewer,
+  Settings.
+- Earlier: a marker waiting for its words, a session picked up after a
+  crash, the screen-change test, the voice detection against real sessions.
 
-Not verified live yet: the chunked microphone (the first try on a Bluetooth
-headset looped reopening the input, fixed since: a change is looked at half a
-second later and only a stopped engine is reopened, at most once a second),
-⌘⇧R and ⌥ ⌥, the pill's dot and hover, a session across sleep. The person
-runs owl-dev for that; `tools/live-test.txt` still plays the old hold-⌥ flow
-and needs the new keys before gravity can run it.
+Not verified live yet: the new keys (⌘ ⌥ ⌥ and ⇧ ⌥ ⌥; ⌥ ⌥ is unchanged),
+quick dictation end to end, the sessions window with a person's mouse (the
+toolbar, the Dock icon coming and going, keys in the picture viewer), the
+microphone watchdog. car-dev has them; it needs its grants and its keys
+turned on. `tools/live-test.txt` still plays the old hold-⌥ flow.
 
-Since then: whether anyone spoke is decided by owl's own voice detection
-(`Voice.swift`, no model; 98.8% of onset-verified words caught on real
-sessions, about 1.4× the spoken time kept), and only the voice goes to the
-models. The remote model (OpenRouter) writes the words, capped and timed out;
-the local model (Apple) keeps time with a deadline, since its model fetch has
-hung for minutes; both are chosen in the menu. On a real two-minute chunk that
-had cost $0.20 and seven minutes (Gemini looping on silence), the same chunk
-now costs $0.002 and three seconds. No key ships; a session asks for one.
+The microphone watchdog came from a real loss: a session recorded nine
+minutes with the microphone (a webcam's, whose camera another app had just
+opened) sending nothing, and nothing noticed. Now four seconds without a
+buffer reopens it, two failed tries fall back to the system default, and the
+pill says so.
 
-GitHub releases and a self-updater were built and taken out again the same
-day: owl is built locally with `./build.sh release`, and whoever wants it
-builds it. (A Developer ID certificate can only be made by the account
-holder, and notarizing needs one.) Typing is never named key by key anywhere
-now: a terminal's keys had been logged one by one because a terminal does not
-look like a text field. `tools/live-test.txt` still plays the old hold-⌥ flow.
+## Renaming owl to car
 
-The real owl runs this build as of 2026-09-24 (its old sessions imported
-into its catalog, a backup of the folders taken first); it holds ⌘⇧R and
-⌥ ⌥, and owl-dev's keys are off.
+The repo, the package (CarKit), the apps (car, car-dev), the bundle ids
+(com.car.mac…), the folders (`Application Support/car`, `car.sqlite`,
+`car.log`) and the lines on the clipboard all say car. owl-dev's data was
+moved to car-dev with a one-off script (folder, catalog file, the catalog's
+store root, the log; old app and command removed). The installed owl is
+moved the same way once it is idle and the person says so. A new bundle id
+means new grants: Accessibility, Microphone, Screen Recording and Automation
+are given again, once.
 
 ## What is next
-
-- Quick dictation (asked 2026-09-24): hold ⇧ and tap ⌥ twice, and owl
-  transcribes what was said since the last long silence (more than ~15 s, a
-  setting) and puts those words on the clipboard as fast as it can; the
-  session carries on as it was. For answering a message out loud in the
-  middle of a long session.
 
 - Bindings (issue #2): any gesture for any action, set by doing it.
 - Archiving: the catalog already records each file's store; a command that
@@ -66,5 +65,6 @@ into its catalog, a backup of the folders taken first); it holds ⌘⇧R and
 - Retention of raw audio once it has words.
 - Long sessions and pictures: a picture per window change all day adds up;
   watch the disk after a few full days.
-- The remark grouping (pause > 0.7 s, or sentence end + pause > 0.25 s) is a
-  first guess.
+- The remark grouping (pause > 0.7 s, or sentence end + pause > 0.25 s) and
+  the script's grouping of actions (1.5 s before a remark to 3 s after) are
+  first guesses.

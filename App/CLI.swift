@@ -1,24 +1,24 @@
 import Foundation
-import OwlKit
+import CarKit
 
-// The `owl` command: the same binary as the app, run from a terminal (the
-// development copy's is `owl-dev`, and sees only its own catalog). It is how
+// The `car` command: the same binary as the app, run from a terminal (the
+// development copy's is `car-dev`, and sees only its own catalog). It is how
 // an agent reads a session.
 //
-//   owl marker [<id|last> [<n|last>]] [--from M]
+//   car marker [<id|last> [<n|last>]] [--from M]
 //                        what was said up to a marker, since the one before
 //                        (or --from); waits until the words reach it
-//   owl session <id|last> [--from M] [--to M]
+//   car session <id|last> [--from M] [--to M]
 //                        the timeline; waits for a stopped session's last words
-//   owl events <id|last> [--from M] [--to M]    every event, JSON, one a line
-//   owl words <id|last> [--from M] [--to M]     every word, JSON, one a line
-//   owl sessions         every session, newest last
-//   owl status           what is being recorded or transcribed now; exit 3 if anything
-//   owl usage            what transcription has cost
-//   owl pointer <id|last>  the line that hands a whole session to an agent
-//   owl transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
-//   owl bench <id|last> [--chunk N] [--model M]
-//   owl models | config [key value] | render <id|last> | guide | version
+//   car events <id|last> [--from M] [--to M]    every event, JSON, one a line
+//   car words <id|last> [--from M] [--to M]     every word, JSON, one a line
+//   car sessions         every session, newest last
+//   car status           what is being recorded or transcribed now; exit 3 if anything
+//   car usage            what transcription has cost
+//   car pointer <id|last>  the line that hands a whole session to an agent
+//   car transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
+//   car bench <id|last> [--chunk N] [--model M]
+//   car models | config [key value] | render <id|last> | guide | version
 //
 // A moment M is start, end, m3 (marker 3), -20m / -90s (before the end), or a
 // time on the session clock (12:30, 1:02:03).
@@ -129,6 +129,9 @@ enum CLI {
                     switch rest[0] {
                     case "remoteModel": c.remoteModel = rest[1] == "none" ? "" : rest[1]
                     case "localModel": c.localModel = rest[1]
+                    case "dictationPause":
+                        guard let v = Double(rest[1]), v > 0 else { throw Failure("dictationPause is seconds") }
+                        c.dictationPause = v
                     case "keys": c.keys = rest[1] == "true"
                     default: throw Failure("unknown setting \(rest[0])")
                     }
@@ -137,6 +140,7 @@ enum CLI {
                 print("remoteModel \(c.remoteModel.isEmpty ? "none" : c.remoteModel)")
                 print("localModel  \(c.localModel)")
                 print("input       \(c.inputName ?? "system default")")
+                print("dictationPause \(Int(c.dictationPause)) s")
                 print("keys        \(c.keys)")
                 print("key         \(Config.openRouterKey == nil ? "missing" : "present")")
                 print("sessions    \(Config.sessionsDir.path)")
@@ -172,7 +176,7 @@ enum CLI {
         let giveUp = Date().addingTimeInterval(20 * 60)
         var told = false
         while let s = Session.record(id), s.isLive {
-            let pending = Session.chunks(id).filter { !$0.state.settled && (t == nil || $0.startMs < t!) }
+            let pending = t.map { Session.unsettled(id, before: $0) } ?? Session.chunks(id).filter { !$0.state.settled }
             if t != nil, pending.isEmpty { return }
             if t == nil, s.state == .recording, SessionLock.isHeld(dir) { return }
             if let lock = SessionLock(dir) {
@@ -240,22 +244,23 @@ enum CLI {
     }
 
     private static func usage() -> Int32 {
-        let owl = Config.name
+        let car = Config.name
         print("""
-        \(owl) — records your voice and what you do on the computer, as one timeline
+        \(car) — records your voice and what you do on the computer, as one timeline
 
-          \(owl) marker [<id|last> [<n|last>]] [--from M]   what was said up to a marker
-          \(owl) session <id|last> [--from M] [--to M]      the timeline
-          \(owl) events <id|last> [--from M] [--to M]       every event, JSON lines
-          \(owl) words <id|last> [--from M] [--to M]        every word, JSON lines
-          \(owl) sessions | status | usage
-          \(owl) pointer <id|last>
-          \(owl) transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
-          \(owl) bench <id|last> [--chunk N] [--model M]
-          \(owl) models | config [remoteModel|localModel|keys VALUE] | render <id|last> | guide | version
+          \(car) marker [<id|last> [<n|last>]] [--from M]   what was said up to a marker
+          \(car) session <id|last> [--from M] [--to M]      the timeline
+          \(car) events <id|last> [--from M] [--to M]       every event, JSON lines
+          \(car) words <id|last> [--from M] [--to M]        every word, JSON lines
+          \(car) sessions | status | usage
+          \(car) pointer <id|last>
+          \(car) transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
+          \(car) bench <id|last> [--chunk N] [--model M]
+          \(car) models | config [remoteModel|localModel|dictationPause|keys VALUE] | render <id|last> | guide | version
 
         M: start, end, m3 (marker 3), -20m (before the end), 12:30 (session clock).
-        ⌘⇧R starts and stops a session; ⌥ ⌥ sets a marker. `\(owl) guide` for the rest.
+        Tap ⌥ twice: with ⌘ held to start or stop a session, alone to set a marker, with ⇧ held to copy
+        what you just said. `\(car) guide` for the rest.
         """)
         return 0
     }

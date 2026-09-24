@@ -1,16 +1,16 @@
 import CoreGraphics
 import Foundation
 import ImageIO
-import OwlKit
+import CarKit
 @preconcurrency import ScreenCaptureKit
 import UniformTypeIdentifiers
 
 // Pictures of the screen, taken when something changed: a new window in front,
 // a click, a scroll, a drawing. Two kinds: the focused window of an app, which
 // is what most moments are about, and a whole display, for a drawing, which is
-// often about more than one window. owl's own windows are never in a picture;
+// often about more than one window. car's own windows are never in a picture;
 // the marks on the screen are drawn into every picture they fall on, with
-// their numbers, by owl itself, so a picture says which mark is which.
+// their numbers, by car itself, so a picture says which mark is which.
 //
 // JPEG, at most ~1.5 MP, and only when it differs from the last picture (a
 // difference hash) unless the moment is worth one regardless. An actor:
@@ -53,6 +53,9 @@ actor Screenshot {
         cfg.height = max(1, Int(rect.height * scale))
         cfg.showsCursor = true
         cfg.captureResolution = .best
+        // The window itself: a JPEG has no transparency, and its shadow
+        // would come out as a white margin around it.
+        cfg.ignoreShadowsSingleWindow = true
         let raw: CGImage
         do {
             raw = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)

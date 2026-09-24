@@ -1,11 +1,11 @@
-// OwlDrive: plays a plan of mouse and keyboard actions into the desktop it
-// runs on and takes pictures of the screen, so owl can be tested live, end to
+// CarDrive: plays a plan of mouse and keyboard actions into the desktop it
+// runs on and takes pictures of the screen, so car can be tested live, end to
 // end, on a Mac no one is using. Never run it on a Mac someone is using: every
 // action is real input.
 //
-//   tools/drive.sh [host]                 build it (and put it and owl-dev on host)
-//   open -W -n /Applications/OwlDrive.app --args PLAN OUTDIR
-//   open -W -n /Applications/OwlDrive.app --args --ask
+//   tools/drive.sh [host]                 build it (and put it and car-dev on host)
+//   open -W -n /Applications/CarDrive.app --args PLAN OUTDIR
+//   open -W -n /Applications/CarDrive.app --args --ask
 //                                         ask for its grants, which puts it in
 //                                         the lists in System Settings
 //
@@ -16,7 +16,7 @@
 //
 // PLAN is one action a line; `#` starts a comment. A point is `X,Y` in the
 // display space (points from the top-left of the main display, y down), or
-// `pill+X,Y` from the top-left of owl's pill.
+// `pill+X,Y` from the top-left of car's pill.
 //
 //   click P               left click
 //   drag P P [P ...]      press at the first point, drag through the rest, let go
@@ -39,7 +39,7 @@ if args.count == 2, args[1] == "--ask" {
     exit(0)
 }
 guard args.count >= 3 else {
-    FileHandle.standardError.write(Data("usage: OwlDrive PLAN OUTDIR\n".utf8))
+    FileHandle.standardError.write(Data("usage: CarDrive PLAN OUTDIR\n".utf8))
     exit(2)
 }
 let plan = URL(fileURLWithPath: args[1])
@@ -71,11 +71,11 @@ func key(_ code: CGKeyCode, down: Bool) {
     e.post(tap: .cghidEventTap)
 }
 
-/// owl's pill, found by its size among owl's windows.
+/// car's pill, found by its size among car's windows.
 func pillOrigin() -> CGPoint? {
     let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
     for w in list {
-        guard let owner = w[kCGWindowOwnerName as String] as? String, owner.hasPrefix("owl"),
+        guard let owner = w[kCGWindowOwnerName as String] as? String, owner.hasPrefix("car"),
               let b = w[kCGWindowBounds as String] as? NSDictionary, let r = CGRect(dictionaryRepresentation: b),
               r.height == 52, r.width > 400 else { continue }
         return r.origin

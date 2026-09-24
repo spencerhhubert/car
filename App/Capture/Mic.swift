@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 import CoreAudio
-import OwlKit
+import CarKit
 
 // The microphone, for as long as a session runs, as a run of chunks: 16 kHz
 // mono AAC files of about three minutes, each cut at a pause, so one is
@@ -14,9 +14,12 @@ import OwlKit
 // It keeps itself going. A microphone that disappears or changes (headphones
 // connecting), and the Mac going to sleep and waking, close the chunk and
 // reopen the input: the chosen device, or the system default while that one
-// is gone. The engine is started and stopped on the mic's own queue, since a
-// Bluetooth input can take a second to open; nothing here waits on the main
-// thread.
+// is gone. So does a microphone that is open and sends nothing (another app
+// took the camera it is part of): after `stall` seconds without a buffer it
+// is reopened, and after two such tries the system default is used for the
+// rest of the session, with a word to the person each time. The engine is
+// started and stopped on the mic's own queue, since a Bluetooth input can
+// take a second to open; nothing here waits on the main thread.
 //
 // AVAudioEngine rather than AVAudioRecorder so the input device can be chosen:
 // on a Mac with headphones, a webcam and an interface plugged in, the system
@@ -42,10 +45,13 @@ final class Mic: @unchecked Sendable {
     static let longest = 240.0
     static let pause = 0.35
     static let quietDb: Float = -38
+    /// Seconds an open input may go without sending sound.
+    static let stall = 4.0
 
     private let onOpen: @Sendable (Chunk) -> Void
     private let onClose: @Sendable (Chunk) -> Void
-    private let control = DispatchQueue(label: "owl.mic")
+    private let onTrouble: @Sendable (String) -> Void
+    private let control = DispatchQueue(label: "car.mic")
 
     // Under `lock`, touched from the tap's thread.
     private let lock = NSLock()
@@ -56,6 +62,8 @@ final class Mic: @unchecked Sendable {
     private var cutPending = false
     private var _level: Float = -160
     private var writeFailed = false
+    /// When the last buffer arrived (system uptime).
+    private var lastSound: TimeInterval = 0
 
     // On `control`.
     private var dir: URL?
@@ -66,10 +74,17 @@ final class Mic: @unchecked Sendable {
     private var sleepWatch: [NSObjectProtocol] = []
     private var lastOpen: TimeInterval = 0
     private var reopening = false
+    private var watchdog: DispatchSourceTimer?
+    /// Reopens because nothing arrived, since sound last did.
+    private var stalls = 0
+    /// The chosen device sent nothing: the system default from here on.
+    private var fallBack = false
 
-    init(onOpen: @escaping @Sendable (Chunk) -> Void, onClose: @escaping @Sendable (Chunk) -> Void) {
+    init(onOpen: @escaping @Sendable (Chunk) -> Void, onClose: @escaping @Sendable (Chunk) -> Void,
+         onTrouble: @escaping @Sendable (String) -> Void) {
         self.onOpen = onOpen
         self.onClose = onClose
+        self.onTrouble = onTrouble
     }
 
     /// Latest level in dBFS.
@@ -93,6 +108,7 @@ final class Mic: @unchecked Sendable {
                     try self.open()
                     self.running = true
                     self.watchSleep()
+                    self.watchForSound()
                     done.resume()
                 } catch {
                     done.resume(throwing: error)
@@ -111,6 +127,8 @@ final class Mic: @unchecked Sendable {
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             control.async {
                 self.running = false
+                self.watchdog?.cancel()
+                self.watchdog = nil
                 for o in self.sleepWatch { NSWorkspace.shared.notificationCenter.removeObserver(o) }
                 self.sleepWatch = []
                 self.shut()
@@ -127,7 +145,7 @@ final class Mic: @unchecked Sendable {
         let input = engine.inputNode
         // Set before the format is read: choosing the device changes the
         // format the node reports.
-        let chosen = uid.flatMap { AudioInputs.device(withUID: $0)?.id } ?? AudioInputs.systemDefault()
+        let chosen = (fallBack ? nil : uid.flatMap { AudioInputs.device(withUID: $0)?.id }) ?? AudioInputs.systemDefault()
         if let unit = input.audioUnit, var id = chosen {
             let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
                                               &id, UInt32(MemoryLayout<AudioDeviceID>.size))
@@ -140,7 +158,10 @@ final class Mic: @unchecked Sendable {
               let converter = AVAudioConverter(from: format, to: target) else {
             throw Failure("could not resample that microphone")
         }
-        lock.withLock { accepting = true }
+        lock.withLock {
+            accepting = true
+            lastSound = ProcessInfo.processInfo.systemUptime
+        }
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, when in
             self?.consume(buffer, when, converter, target, into: dir)
         }
@@ -223,6 +244,35 @@ final class Mic: @unchecked Sendable {
         ]
     }
 
+    /// Every second or two, while open: has any sound come in lately?
+    private func watchForSound() {
+        let t = DispatchSource.makeTimerSource(queue: control)
+        t.schedule(deadline: .now() + 2, repeating: 2, leeway: .milliseconds(500))
+        t.setEventHandler { [weak self] in self?.checkForSound() }
+        t.resume()
+        watchdog = t
+    }
+
+    private func checkForSound() {
+        guard running, engine != nil, !reopening else { return }
+        let silent = ProcessInfo.processInfo.systemUptime - lock.withLock { lastSound }
+        guard silent > Mic.stall else {
+            if silent < 1 { stalls = 0 }
+            return
+        }
+        stalls += 1
+        // A microphone that stays dead is tried again twice a minute, not
+        // every few seconds all day.
+        guard stalls < 6 || stalls % 15 == 0 else { return }
+        if stalls > 2, uid != nil, !fallBack {
+            fallBack = true
+            onTrouble("the microphone sends no sound; recording from the system default")
+        } else if stalls == 1 {
+            onTrouble("the microphone sends no sound; opening it again")
+        }
+        reopen("no sound for \(Int(silent)) s")
+    }
+
     // MARK: - the sound, on the tap's thread
 
     private func consume(_ buffer: AVAudioPCMBuffer, _ when: AVAudioTime, _ converter: AVAudioConverter,
@@ -248,6 +298,7 @@ final class Mic: @unchecked Sendable {
         var closed: Chunk?
         lock.withLock {
             _level = db
+            lastSound = ProcessInfo.processInfo.systemUptime
             guard accepting else { return }
             if current == nil {
                 let c = Chunk(n: next, url: dir.appending(path: String(format: "audio/%04d.m4a", next)),

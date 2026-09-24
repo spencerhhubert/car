@@ -1,5 +1,5 @@
 import Foundation
-import OwlKit
+import CarKit
 
 // The session being recorded and what feeds it: the microphone, a chunk at a
 // time; the watcher; the drawing layer's marks; and the transcriber, which
@@ -21,13 +21,20 @@ final class Recording {
         watcher = Watcher(session: session)
     }
 
-    static func begin(config: Config, drawing: Drawing) async throws -> Recording {
+    /// `onTrouble` hears, on the main thread, what goes wrong with the
+    /// microphone while it records, in words for the person.
+    static func begin(config: Config, drawing: Drawing,
+                      onTrouble: @escaping @MainActor (String) -> Void) async throws -> Recording {
         let session = try Session(input: config.inputName ?? "system default")
         let transcriber = Transcriber(id: session.id)
         let mic = Mic(onOpen: { c in session.chunkOpened(c.n, file: c.file, start: c.start) },
                       onClose: { c in
                           session.chunkClosed(c.n, file: c.file, end: c.end, seconds: c.seconds, peakDb: Double(c.peak))
                           Task { await transcriber.add(c.n) }
+                      },
+                      onTrouble: { what in
+                          Log.line("session \(session.id): \(what)")
+                          Task { @MainActor in onTrouble(what) }
                       })
         do {
             try await mic.start(into: session.dir, uid: config.inputUID)
@@ -51,6 +58,14 @@ final class Recording {
         let m = try session.marker()
         mic.cut()
         return (m.n, m.at)
+    }
+
+    /// Cut the chunk now, so the words up to this moment are transcribed
+    /// straight away, and say when that was on the session clock.
+    func cut() -> Int {
+        let t = session.now
+        mic.cut()
+        return t
     }
 
     /// Stop. The sound ends now; the watcher writes what is still on its way;

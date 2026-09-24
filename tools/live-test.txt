@@ -1,5 +1,5 @@
-# owl's live test, played by OwlDrive (tools/drive.swift) on a Mac no one is
-# using, with owl-dev running there and its gesture on. Two sessions: every
+# car's live test, played by CarDrive (tools/drive.swift) on a Mac no one is
+# using, with car-dev running there and its gesture on. Two sessions: every
 # drawing tool, each way of putting a tool down, wiping, stopping from the
 # pill, and a second session started while the first is transcribing.
 # Points fit a 1280x800 screen; pill+X,Y are the pill's controls:

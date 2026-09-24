@@ -1,16 +1,29 @@
-# How owl works
+# How car works
 
-Everything about using owl and what it records, for a person or an agent.
-The [README](../README.md) is the short version.
+car is short for continuous action recording. This is everything about using
+it and what it records, for a person or an agent. The
+[README](../README.md) is the short version.
+
+## The keys
+
+One gesture, ⌥ tapped twice, and what you hold with it says what it does:
+
+| | |
+|---|---|
+| **⌘ ⌥ ⌥** | start a session, or stop the one running |
+| **⌥ ⌥** | set a marker for an agent |
+| **⇧ ⌥ ⌥** | copy what you just said, as text |
+
+Hold ⌘ or ⇧ (or neither) through both taps. Nothing else starts or stops a
+session. The keys need Accessibility; Settings turns them off and on.
 
 ## A session
 
 A session is meant to run for hours: start it when you sit down, stop it when
-you are done. **⌘⇧R** starts it and **⌘⇧R** stops it; nothing else does.
-While it runs, a dot at the bottom of the screen (🦉 ●) says so, and opens
-into the toolbar while the pointer is on it: the time and the level, the
-drawing tools, and the bin. The menu has *Stop session*, *Set marker* and
-*Discard session…* too.
+you are done. While it runs, a dot at the bottom of the screen (🏎️ ●) says
+so, and opens into the toolbar while the pointer is on it: the time and the
+level, the drawing tools, and the bin. The 🏎️ menu has *Stop Session*,
+*Set Marker* and *Discard Session…* too.
 
 Nothing plays, and nothing is uploaded except the sound to the transcription
 model you chose, a chunk at a time.
@@ -18,18 +31,44 @@ model you chose, a chunk at a time.
 ## Markers: handing it to an agent
 
 Tap **⌥ twice** whenever you want an agent to act on what you have been
-saying. owl sets a marker at that moment and puts one line on the clipboard:
+saying. car sets a marker at that moment and puts one line on the clipboard:
 
 ```
-owl marker 3 set at 12:31:05 pm in session 20260924-122534
+car marker 3 set at 12:31:05 pm in session 20260924-122534
 ```
 
-Paste it into an agent that knows owl (its skill is
-[`skill/SKILL.md`](../skill/SKILL.md)). It runs `owl marker 20260924-122534 3`
+Paste it into an agent that knows car (its skill is
+[`skill/SKILL.md`](../skill/SKILL.md)). It runs `car marker 20260924-122534 3`
 and reads what you said since the marker before, reaching further back
 (`--from -30m`, `--from start`) when your words point there ("like I said
 earlier"). The marker also cuts the sound there, so the words up to it are
-transcribed straight away; `owl marker` waits the few seconds that takes.
+transcribed straight away; `car marker` waits the few seconds that takes.
+
+## Quick dictation
+
+Hold **⇧** and tap **⌥ twice** to answer a message out loud without leaving
+the session: car cuts the sound there, waits for its words (a few seconds),
+and puts what you said since your last pause of 15 seconds or more on the
+clipboard as text, ready to paste. The pause is a setting (Settings →
+Recording). The session carries on as it was, and the timeline notes it:
+`copied what was said since 01:02.000 to the clipboard (42 words)`.
+
+## The sessions window
+
+*Sessions…* in the 🏎️ menu (or opening car.app while it runs) opens a
+window with every session down the side, newest first, each with the first
+words said in it, and the one picked read as a script: a row for each moment,
+with when it was said in the margin, what was said, what was done around it,
+and the pictures taken then. Click a picture to see it big; ← and → step
+through every picture in the session. A marker is a line across with a button
+that copies it for an agent. Where the words are still to come, the row says
+so; a session being recorded reads live and grows at the bottom. While the
+window is open car is in the Dock like any app; when it closes car goes back
+to the menu bar alone.
+
+*Settings…* (⌘,) holds everything that is a choice: the models, the key, the
+microphone, quick dictation's pause, the keys, what transcription has cost,
+the permissions, and which build this is.
 
 ## Drawing while you talk
 
@@ -42,7 +81,7 @@ or an arrow at 45°.
 
 A drawing is a gesture made while talking, not a note left on the screen: it
 holds for six seconds and fades over three. When what it was drawn on changes
-a lot (another tab, a scroll, a model turned), it fades in half a second. owl
+a lot (another tab, a scroll, a model turned), it fades in half a second. car
 watches the screen under each drawing with a small, slow capture while
 drawings are up, and not at all otherwise. The bin wipes them all at once.
 
@@ -61,7 +100,7 @@ is up, and gets a picture of the whole screen the moment it is finished. So
 
 ## Where it all is
 
-The catalog, `owl.sqlite`, holds everything about every session: the
+The catalog, `car.sqlite`, holds everything about every session: the
 session, its chunks of sound, every word, every event, every marker, what
 transcribing it cost, and where each of its files is. The files are only the
 heavy data:
@@ -88,7 +127,7 @@ space the accessibility API and the window server use.
 A session is `recording`, then `transcribing` (its last chunks, after it
 stops), then `done` or `failed`. Whoever is recording or transcribing one
 holds its lock, so a session a crash or a quit left unfinished is found and
-finished by the app at its next launch, or by `owl session` or `owl marker`
+finished by the app at its next launch, or by `car session` or `car marker`
 when asked for it. A crash loses at most the chunk being written.
 
 ## The sound, a chunk at a time
@@ -97,8 +136,11 @@ The microphone is recorded as chunks of about three minutes, each cut at the
 first pause after that (four minutes at most), so each is transcribed while
 the next records. A marker cuts one on the spot. Each chunk is stamped on the
 session clock from the moment its first sample arrived. The microphone
-reopens by itself when it changes or disappears (headphones connecting) and
-when the Mac wakes from sleep.
+reopens by itself when it changes or disappears (headphones connecting),
+when the Mac wakes from sleep, and when it is open but sends nothing for
+four seconds (another app took the camera it belongs to). If the microphone
+chosen still sends nothing after two tries, the session carries on with the
+system default, and the pill says so each time.
 
 ## From sound to words
 
@@ -120,14 +162,14 @@ The voice alone is cut into one short clip, and two models hear it:
    with the fillers left in. It is billed for the voice, not the chunk, and its
    answer is capped at what a person could say in the time, so a model that
    starts repeating itself is stopped there. Pick any audio-capable model, or
-   none, from the menu (*Remote model*) or with `owl config remoteModel <id>`;
-   `owl models` lists them.
+   none, in Settings (*Words by*) or with `car config remoteModel <id>`;
+   `car models` lists them.
 2. **The local model** keeps time: Apple's recognizer on this Mac stamps every
    run of its own transcript with the audio range it was heard in. Its words
    are worse; its clock is real, because it comes from the sound. It writes
    the words when there is no remote model. It is asked with a deadline, since
    fetching its language model has been seen to hang for minutes; set it to
-   none from the menu (*Local model*) and the words are spread over the voice
+   none in Settings (*Times by*) and the words are spread over the voice
    by length instead.
 
 The two are lined up by a global word alignment (`Align.swift`): each word of
@@ -135,10 +177,10 @@ the remote model's transcript that matches a timed word takes its time; a word
 with no partner is placed between its matched neighbours by its length. Then
 every word's start is moved to the onset actually heard in the sound, inside a
 short window around the local model's boundary (`Refine.swift`), which is what
-gets it within a frame. `owl words` says how each word was timed: `matched`,
+gets it within a frame. `car words` says how each word was timed: `matched`,
 `interpolated` or `spread`, with `+onset` when the start was snapped.
 
-**Judging a remote model's clock.** `owl bench <id> --chunk N --model <id>`
+**Judging a remote model's clock.** `car bench <id> --chunk N --model <id>`
 asks a model for its own timestamped segments, lays the same words onto both
 and reports the per-word difference in start time. On a 14 s clip,
 `google/gemini-3-flash-preview` placed words a median 717 ms from the local
@@ -171,23 +213,24 @@ or window changes, after a click or a scroll when the screen changed, never
 more than one every 0.7 s, and only when it differs from the last one (a
 difference hash). A drawing gets a picture of its whole screen regardless.
 What was recorded as text is also recorded as a picture, because the text
-reading is sometimes wrong about what a window is showing. owl's own pill and
-drawing layer are never in a picture; the drawings are drawn in by owl, with
+reading is sometimes wrong about what a window is showing. car's own pill and
+drawing layer are never in a picture; the drawings are drawn in by car, with
 their numbers.
 
 ## Cost and the key
 
-Every call to OpenRouter is in the catalog with what it cost. The menu shows
-today and the last 30 days, with a breakdown by span and by model; `owl usage`
-prints the same. No key ships with owl: with a remote model chosen, the first
-session asks for one (the menu's *OpenRouter key* changes it). It is kept in
-`~/Library/Application Support/owl/openrouter.key`, readable by you only, or
-comes from `OPENROUTER_API_KEY`. With *Remote model → none*, no key is needed
-and the words are the local model's.
+Every call to OpenRouter is in the catalog with what it cost. Settings shows
+today, the last 7 and 30 days and all of it, and the last 30 days by model;
+each session's cost is in the sessions window; `car usage` prints the same.
+No key ships with car: with a remote model chosen, the first session asks for
+one (Settings changes it). It is kept in
+`~/Library/Application Support/car/openrouter.key`, readable by you only, or
+comes from `OPENROUTER_API_KEY`. With no remote model, no key is needed and
+the words are the local model's.
 
 ## Install
 
-owl is not distributed as a download: you build it. It needs macOS 26 (the
+car is not distributed as a download: you build it. It needs macOS 26 (the
 on-device recognizer), Xcode, and `xcodegen` (`brew install xcodegen`);
 `ffmpeg` is optional (with it the voice is sent as a small mp3).
 
@@ -195,19 +238,19 @@ on-device recognizer), Xcode, and `xcodegen` (`brew install xcodegen`);
 ./build.sh release
 ```
 
-runs OwlKit's tests, builds, signs with the first Apple Development identity
-in the keychain (ad hoc without one), installs `/Applications/owl.app`, and
-launches it; at launch it links the `owl` command into `~/.local/bin`. It
-refuses while owl is recording or transcribing, and otherwise quits the
-running copy properly first, so it is also how owl is updated. Plain
-`./build.sh` builds the development copy instead, `/Applications/owl-dev.app`
-and `owl-dev`, which runs beside the real one with its own catalog, sessions,
-settings, log and permissions, and its keys off until turned on from its menu
-(both copies can hold ⌘⇧R, and one press would start a session in each). The
-version, the commit it was built from, is at the top of the menu and in
-`owl version`.
+runs CarKit's tests, builds, signs with the first Apple Development identity
+in the keychain (ad hoc without one), installs `/Applications/car.app`, and
+launches it; at launch it links the `car` command into `~/.local/bin`. It
+refuses while car is recording or transcribing, and otherwise quits the
+running copy properly first, so it is also how car is updated. Plain
+`./build.sh` builds the development copy instead, `/Applications/car-dev.app`
+and `car-dev`, which runs beside the real one with its own catalog, sessions,
+settings, log and permissions, and its keys off until turned on in its
+Settings (both copies see every tap of ⌥, and one gesture would reach both).
+The version, the commit it was built from, is in Settings → About and in
+`car version`.
 
-Then, from the owl menu → Permissions: **Accessibility** (⌥ ⌥ and what is
+Then, in Settings → Permissions: **Accessibility** (the keys, and what is
 focused), **Microphone**, **Screen Recording** (pictures, and fading drawings
 when the screen changes), and **Automation** for Finder and each browser
 (their selection and tabs). Each is a one-time system prompt.
@@ -215,24 +258,24 @@ when the screen changes), and **Automation** for Finder and each browser
 ## The command
 
 ```
-owl marker [<id|last> [<n|last>]] [--from M]   what was said up to a marker; waits for its words
-owl session <id|last> [--from M] [--to M]      the timeline, whole or a stretch
-owl events <id|last> [--from M] [--to M]       every event, JSON, one a line
-owl words <id|last> [--from M] [--to M]        every word, JSON, one a line
-owl sessions                                   every session
-owl status                                     what is being recorded or transcribed now
-owl usage                                      what transcription has cost
-owl pointer <id|last>                          the line that hands over a whole session
-owl transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
+car marker [<id|last> [<n|last>]] [--from M]   what was said up to a marker; waits for its words
+car session <id|last> [--from M] [--to M]      the timeline, whole or a stretch
+car events <id|last> [--from M] [--to M]       every event, JSON, one a line
+car words <id|last> [--from M] [--to M]        every word, JSON, one a line
+car sessions                                   every session
+car status                                     what is being recorded or transcribed now
+car usage                                      what transcription has cost
+car pointer <id|last>                          the line that hands over a whole session
+car transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
                                                transcribe what is left (or failed, or all of it again)
-owl bench <id|last> [--chunk N] --model M      a model's clock against the on-device one
-owl models | config [remoteModel|localModel|keys value] | render <id|last> | guide | version
+car bench <id|last> [--chunk N] --model M      a model's clock against the on-device one
+car models | config [remoteModel|localModel|dictationPause|keys value] | render <id|last> | guide | version
 ```
 
 A moment `M` is `start`, `end`, `m3` (marker 3), `-20m` or `-90s` (before
 the end of the stretch), or a time on the session clock (`12:30`,
 `1:02:03`).
 
-Everything lives under `~/Library/Application Support/owl/`; the log is
-`~/Library/Logs/owl.log`. The development copy's are `owl-dev` in both
+Everything lives under `~/Library/Application Support/car/`; the log is
+`~/Library/Logs/car.log`. The development copy's are `car-dev` in both
 places.

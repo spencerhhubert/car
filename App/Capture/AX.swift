@@ -1,8 +1,8 @@
 import AppKit
 import ApplicationServices
-import OwlKit
+import CarKit
 
-// Small helpers over the accessibility API. Everything here is a read; owl
+// Small helpers over the accessibility API. Everything here is a read; car
 // never posts an action into another app. Each call is a synchronous message
 // to the other app, answered when that app gets round to it (or after the
 // messaging timeout), so they are made on the reader queue (Adapters.swift),
@@ -68,12 +68,16 @@ enum AX {
     struct Window { let pid: pid_t; let app: String; let title: String }
 
     /// The windows under a point, front to back, as the window server has
-    /// them. Windows no one can see are left out.
+    /// them. Windows no one can see are left out, and so are the window
+    /// server's own above everything (the pointer, the recording
+    /// indicators), which are under every point the pointer is at.
     static func windows(at p: CGPoint) -> [Window] {
         guard let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]]
         else { return [] }
+        let top = Int(CGWindowLevelForKey(.screenSaverWindow))
         return list.compactMap { w in
-            guard let pid = w[kCGWindowOwnerPID as String] as? pid_t,
+            guard (w[kCGWindowLayer as String] as? Int ?? 0) < top,
+                  let pid = w[kCGWindowOwnerPID as String] as? pid_t,
                   let b = w[kCGWindowBounds as String] as? NSDictionary,
                   let r = CGRect(dictionaryRepresentation: b), r.contains(p),
                   (w[kCGWindowAlpha as String] as? Double ?? 1) > 0 else { return nil }
@@ -82,13 +86,13 @@ enum AX {
         }
     }
 
-    /// The front-most window under a point that is not owl's own.
+    /// The front-most window under a point that is not car's own.
     static func window(at p: CGPoint) -> Window? {
         let me = getpid()
         return windows(at: p).first { $0.pid != me }
     }
 
-    /// The element under a point. owl's own windows are looked through: a
+    /// The element under a point. car's own windows are looked through: a
     /// drawing sits on top of exactly the thing it is about.
     static func element(at p: CGPoint) -> AXUIElement? {
         let me = getpid()
@@ -148,7 +152,7 @@ enum AX {
 
 /// Points in the global display space: origin at the top-left of the main
 /// display, y down. The accessibility API, the window server's window list
-/// and ScreenCaptureKit all use it, and so does everything owl writes down
+/// and ScreenCaptureKit all use it, and so does everything car writes down
 /// (clicks, drawings). AppKit's screen coordinates (origin bottom-left, y up)
 /// are converted at the edge, here.
 enum Space {

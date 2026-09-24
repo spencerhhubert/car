@@ -8,7 +8,8 @@ import UniformTypeIdentifiers
 // Pictures of the screen, taken when something changed: a new window in front,
 // a click, a scroll, a drawing. Two kinds: the focused window of an app, which
 // is what most moments are about, and a whole display, for a drawing, which is
-// often about more than one window. car's own windows are never in a picture;
+// often about more than one window. car's overlays (the pill, the drawing
+// layer) are never in a picture, though its own window is, like any app's;
 // the marks on the screen are drawn into every picture they fall on, with
 // their numbers, by car itself, so a picture says which mark is which.
 //
@@ -109,8 +110,13 @@ actor Screenshot {
         }
         guard let d = content.displays.first(where: { $0.displayID == display }) ?? content.displays.first
         else { return nil }
-        let me = content.applications.filter { $0.processID == getpid() }
-        return (SCContentFilter(display: d, excludingApplications: me, exceptingWindows: []), d.frame)
+        return (SCContentFilter(display: d, excludingWindows: overlays(in: content)), d.frame)
+    }
+
+    /// car's own windows that float over everything (the pill, the drawing
+    /// layer): never in a picture. car's own window is, like any app's.
+    static func overlays(in content: SCShareableContent) -> [SCWindow] {
+        content.windows.filter { $0.owningApplication?.processID == getpid() && $0.windowLayer > 0 }
     }
 
     private static func distance(_ a: CGRect, _ b: CGRect) -> CGFloat {

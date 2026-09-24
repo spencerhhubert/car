@@ -43,17 +43,21 @@ final class SettingsModel {
     }
 
     /// Read again everything that can change outside this window: the
-    /// microphones, the key, the grants, the spending.
+    /// microphones, the key, the grants, the spending, the disk. What asks
+    /// the catalog or walks the disk runs off the main thread; until it
+    /// comes back the page shows what it last knew, so nothing on it moves.
     func reload() {
         inputs = AudioInputs.all()
         hasKey = Config.openRouterKey != nil
         permissions = Permissions(accessibility: Keys.trusted, microphone: Mic.permissionGranted,
                                   screen: Screenshot.hasPermission)
-        spending = Usage.spans.map { ($0.name, Usage.total(since: $0.since)) }
-        byModel = Usage.byModel(since: Usage.spans[2].since)
         Task {
-            let use = await Task.detached(priority: .utility) { Storage.use() }.value
-            disk = use
+            let (spans, models) = await Task.detached(priority: .userInitiated) {
+                (Usage.spans.map { ($0.name, Usage.total(since: $0.since)) }, Usage.byModel(since: Usage.spans[2].since))
+            }.value
+            spending = spans
+            byModel = models
+            disk = await Task.detached(priority: .utility) { Storage.use() }.value
         }
     }
 
@@ -189,15 +193,12 @@ struct SettingsView: View {
             }
 
             Section {
-                if let d = model.disk {
-                    LabeledContent("Pictures", value: Storage.bytes(d.pictures))
-                    LabeledContent("Sound", value: Storage.bytes(d.sound))
-                    LabeledContent("Catalog", value: Storage.bytes(d.catalog + d.other))
-                    LabeledContent("All of it", value: Storage.bytes(d.total)).fontWeight(.medium)
-                    if let free = d.free { LabeledContent("Free on this disk", value: Storage.bytes(free)) }
-                } else {
-                    LabeledContent("Measuring") { ProgressView().controlSize(.small) }
-                }
+                let d = model.disk
+                LabeledContent("Pictures", value: d.map { Storage.bytes($0.pictures) } ?? "…")
+                LabeledContent("Sound", value: d.map { Storage.bytes($0.sound) } ?? "…")
+                LabeledContent("Catalog", value: d.map { Storage.bytes($0.catalog + $0.other) } ?? "…")
+                LabeledContent("All of it", value: d.map { Storage.bytes($0.total) } ?? "…").fontWeight(.medium)
+                LabeledContent("Free on this disk", value: d?.free.map(Storage.bytes) ?? "…")
             } header: {
                 Text("Disk")
             } footer: {
@@ -228,7 +229,6 @@ struct SettingsView: View {
         .frame(maxWidth: Metrics.settingsWidth)
         .frame(maxWidth: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { model.reload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.reload()
         }

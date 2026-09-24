@@ -65,7 +65,17 @@ enum AX {
 
     // MARK: - what is under a point
 
-    struct Window { let pid: pid_t; let app: String; let title: String }
+    struct Window {
+        let pid: pid_t
+        let app: String
+        let title: String
+        let layer: Int
+
+        /// One of car's own windows that float over everything (the pill,
+        /// the drawing layer): never what anything is about. car's own
+        /// window is an ordinary window like any app's.
+        var isOverlay: Bool { pid == getpid() && layer > 0 }
+    }
 
     /// The windows under a point, front to back, as the window server has
     /// them. Windows no one can see are left out, and so are the window
@@ -76,36 +86,36 @@ enum AX {
         else { return [] }
         let top = Int(CGWindowLevelForKey(.screenSaverWindow))
         return list.compactMap { w in
-            guard (w[kCGWindowLayer as String] as? Int ?? 0) < top,
+            let layer = w[kCGWindowLayer as String] as? Int ?? 0
+            guard layer < top,
                   let pid = w[kCGWindowOwnerPID as String] as? pid_t,
                   let b = w[kCGWindowBounds as String] as? NSDictionary,
                   let r = CGRect(dictionaryRepresentation: b), r.contains(p),
                   (w[kCGWindowAlpha as String] as? Double ?? 1) > 0 else { return nil }
             return Window(pid: pid, app: w[kCGWindowOwnerName as String] as? String ?? "",
-                          title: w[kCGWindowName as String] as? String ?? "")
+                          title: w[kCGWindowName as String] as? String ?? "", layer: layer)
         }
     }
 
-    /// The front-most window under a point that is not car's own.
+    /// The front-most window under a point that is not one of car's
+    /// overlays.
     static func window(at p: CGPoint) -> Window? {
-        let me = getpid()
-        return windows(at: p).first { $0.pid != me }
+        windows(at: p).first { !$0.isOverlay }
     }
 
-    /// The element under a point. car's own windows are looked through: a
+    /// The element under a point. car's overlays are looked through: a
     /// drawing sits on top of exactly the thing it is about.
     static func element(at p: CGPoint) -> AXUIElement? {
-        let me = getpid()
         let under = windows(at: p)
         var hit: AXUIElement?
-        if under.first?.pid != me {
+        if under.first?.isOverlay != true {
             // The system-wide hit test, which also knows the menu bar.
             let system = AXUIElementCreateSystemWide()
             AXUIElementSetMessagingTimeout(system, 0.25)
             guard AXUIElementCopyElementAtPosition(system, Float(p.x), Float(p.y), &hit) == .success else { return nil }
             return hit
         }
-        guard let w = under.first(where: { $0.pid != me }),
+        guard let w = under.first(where: { !$0.isOverlay }),
               AXUIElementCopyElementAtPosition(app(w.pid), Float(p.x), Float(p.y), &hit) == .success
         else { return nil }
         return hit

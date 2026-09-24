@@ -85,7 +85,7 @@ enum Adapters {
         return r
     }
 
-    /// What is under a point: the app and window there (car's own windows
+    /// What is under a point: the app and window there (car's overlays
     /// looked through) and the element. On the reader queue.
     static func under(_ p: CGPoint) -> [String: Any] {
         var f: [String: Any] = [:]

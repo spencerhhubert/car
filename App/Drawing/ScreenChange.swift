@@ -80,7 +80,6 @@ final class ScreenChange: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked
             do {
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
                 guard let d = content.displays.first(where: { $0.displayID == display }) else { throw Failure("no display") }
-                let me = content.applications.filter { $0.processID == getpid() }
                 let cfg = SCStreamConfiguration()
                 cfg.width = max(64, Int(frame.width / 3))
                 cfg.height = max(40, Int(frame.height / 3))
@@ -88,7 +87,7 @@ final class ScreenChange: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked
                 cfg.pixelFormat = kCVPixelFormatType_32BGRA
                 cfg.showsCursor = false
                 cfg.queueDepth = 3
-                let stream = SCStream(filter: SCContentFilter(display: d, excludingApplications: me, exceptingWindows: []),
+                let stream = SCStream(filter: SCContentFilter(display: d, excludingWindows: Screenshot.overlays(in: content)),
                                       configuration: cfg, delegate: self)
                 try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
                 try await stream.startCapture()

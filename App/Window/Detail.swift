@@ -4,13 +4,15 @@ import Observation
 import SwiftUI
 
 // The window's main pane: the session picked in the sidebar (its script),
-// Settings, or, before there is anything, a word saying how to start. It
-// follows the sidebar's page and shows one child at a time; a child it is not
-// showing does no work.
+// Settings, or, before there is anything, a word saying how to start. All
+// three are built when the window opens and kept, and the pane shows one at a
+// time, so picking a page shows it at once. A page not on show does no work:
+// the script stops reading, and Settings reads its numbers only when shown.
 @MainActor
 final class DetailController: NSViewController {
     private let library: Library
     private let script: ScriptController
+    private let settingsModel: SettingsModel
     private let settings: NSViewController
     private let empty = host(ContentUnavailableView("No Sessions", systemImage: "waveform",
                                                     description: Text("Hold ⌘ and tap ⌥ twice to start one.")))
@@ -19,16 +21,27 @@ final class DetailController: NSViewController {
     init(library: Library, script: ScriptModel, settings: SettingsModel) {
         self.library = library
         self.script = ScriptController(model: script)
+        settingsModel = settings
         self.settings = host(SettingsView(model: settings))
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("not from a nib") }
 
-    override func loadView() { view = NSView() }
+    override func loadView() {
+        view = NSView()
+        for child in [script, settings, empty] {
+            addChild(child)
+            child.view.frame = view.bounds
+            child.view.autoresizingMask = [.width, .height]
+            child.view.isHidden = true
+            view.addSubview(child.view)
+        }
+    }
 
     func start() {
         guard watching == nil else { return }
+        _ = view
         watching = Task { [weak self, library] in
             for await (page, loaded) in Observations({ (library.page, library.loaded) }) {
                 self?.show(page, loaded: loaded)
@@ -45,28 +58,20 @@ final class DetailController: NSViewController {
     private func show(_ page: Library.Page?, loaded: Bool) {
         switch page {
         case .session(let id):
-            put(script)
+            only(script)
             script.show(id)
         case .settings:
             script.stop()
-            put(settings)
+            only(settings)
+            settingsModel.reload()
         case nil:
             script.stop()
-            put(loaded ? empty : nil)
+            only(loaded ? empty : nil)
         }
     }
 
-    /// Make `child` the one on show.
-    private func put(_ child: NSViewController?) {
-        guard child == nil || child?.parent !== self else { return }
-        for c in children {
-            c.view.removeFromSuperview()
-            c.removeFromParent()
-        }
-        guard let child else { return }
-        addChild(child)
-        child.view.frame = view.bounds
-        child.view.autoresizingMask = [.width, .height]
-        view.addSubview(child.view)
+    /// Show `child` and hide the others.
+    private func only(_ child: NSViewController?) {
+        for c in [script, settings, empty] { c.view.isHidden = c !== child }
     }
 }

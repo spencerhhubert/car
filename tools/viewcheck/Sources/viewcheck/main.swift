@@ -193,7 +193,10 @@ MainActor.assumeIsolated {
     if let p = script.pictures.first {
         render(Viewer(script: script, id: p.id), NSSize(width: width, height: 720), "picture-\(mode).png")
     }
-    render(SettingsView(model: SettingsModel(app: app)), NSSize(width: 900, height: 1500), "settings-\(mode).png")
+    let settings = SettingsModel(app: app)
+    settings.reload()
+    render(SettingsView(model: settings), NSSize(width: 900, height: 1500), "settings-\(mode).png")
+    render(Sidebar(library: w.library), NSSize(width: 240, height: 400), "sidebar-\(mode).png")
     window.orderOut(nil)
 }
 exit(failed ? 1 : 0)

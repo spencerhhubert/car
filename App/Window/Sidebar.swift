@@ -9,6 +9,15 @@ struct Sidebar: View {
     @Bindable var library: Library
 
     var body: some View {
+        // The list, and beneath it (never over it) Settings.
+        VStack(spacing: 0) {
+            list
+            settings
+        }
+        .task { await library.follow() }
+    }
+
+    private var list: some View {
         List(selection: $library.selectedID) {
             ForEach(library.days, id: \.day) { day in
                 Section(day.day) {
@@ -31,21 +40,21 @@ struct Sidebar: View {
                 Text("No sessions yet").textStyle(.note)
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            let on = library.page == .settings
-            HStack {
-                Button { library.page = .settings } label: {
-                    Label("Settings", systemImage: on ? "gearshape.fill" : "gearshape")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                .help("Settings (⌘,)")
-                Spacer()
+    }
+
+    private var settings: some View {
+        let on = library.page == .settings
+        return HStack {
+            Button { library.page = .settings } label: {
+                Label("Settings", systemImage: on ? "gearshape.fill" : "gearshape")
             }
-            .padding(.horizontal, Spacing.l)
-            .padding(.vertical, Spacing.m)
+            .buttonStyle(.borderless)
+            .foregroundStyle(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            .help("Settings (⌘,)")
+            Spacer()
         }
-        .task { await library.follow() }
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, Spacing.m)
     }
 }
 

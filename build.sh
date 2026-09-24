@@ -14,13 +14,19 @@
 # car is not distributed as a download: whoever wants it builds it with this.
 # Each copy is installed at a fixed path and signed with a stable identity on
 # purpose: macOS keys the Accessibility, Microphone, Screen Recording and
-# Automation grants to bundle id + signing identity + path, and a path that
-# changes every build loses them. The two copies have separate grants.
+# Automation grants to the bundle id and the certificate the app is signed
+# with. A rebuild signed the same way keeps them; a new bundle id or a new
+# certificate starts over, and every grant is asked for again. The two copies
+# have separate grants.
 #
-# Signing: the first "Apple Development" identity in the keychain, with the
-# team read off its certificate, so nothing about an account is written here.
-# With no such identity the build signs ad hoc, which works for a local run
-# but re-prompts for every grant after each rebuild.
+# Signing: the certificate the installed copy is already signed with, while
+# it is valid, so a new certificate in the keychain never changes it; else
+# the first valid "Apple Development" identity. The team is read off that
+# certificate, so nothing about an account is written here. A build that
+# would be signed differently from the installed copy says so, and for the
+# real car stops unless NEW_SIGNATURE=1. With no identity at all the build
+# signs ad hoc, which works for a local run but asks for every grant after
+# each rebuild.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 export PATH="/opt/homebrew/bin:$PATH"
@@ -33,10 +39,14 @@ esac
 APP="/Applications/$NAME.app"
 DERIVED="$HERE/.build/$NAME"
 
-IDENTITY="$(security find-identity -v -p codesigning | awk '/Apple Development/{print $2; exit}' || true)"
+VALID="$(security find-identity -v -p codesigning | grep 'Apple Development' || true)"
+SIGNER="$(codesign -dvv "$APP" 2>&1 | sed -n 's/^Authority=\(Apple Development: .*\)$/\1/p' | head -1 || true)"
+IDENTITY=""
+[ -n "$SIGNER" ] && IDENTITY="$(echo "$VALID" | grep -F "\"$SIGNER\"" | awk '{print $2; exit}' || true)"
+[ -n "$IDENTITY" ] || IDENTITY="$(echo "$VALID" | awk '{print $2; exit}' || true)"
 TEAM=""
 if [ -n "$IDENTITY" ]; then
-    TEAM="$(security find-certificate -c "Apple Development" -p \
+    TEAM="$(security find-certificate -a -Z -p | awk -v h="$IDENTITY" '/^SHA-1 hash:/{keep=($3==h); next} /^SHA-256 hash:/{next} keep' \
         | openssl x509 -noout -subject | sed -E 's/.*OU ?= ?([A-Z0-9]+).*/\1/')"
 fi
 
@@ -67,6 +77,27 @@ grep -E 'warning:' "$LOG" | grep -v 'appintentsmetadataprocessor' | sort -u | he
 BUILT="$DERIVED/Build/Products/Release/$NAME.app"
 [ -d "$BUILT" ] || { echo "build produced no app" >&2; exit 1; }
 
+SIGN="${IDENTITY:--}"
+echo "==> signing $NAME"
+codesign --force --deep --options runtime --entitlements "$HERE/App/car.entitlements" --sign "$SIGN" "$BUILT"
+codesign --verify --strict "$BUILT"
+
+# The grants belong to how the installed copy is signed. A build signed any
+# other way would lose them all.
+if [ -d "$APP" ]; then
+    OLD="$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => //p')"
+    NEW="$(codesign -d -r- "$BUILT" 2>&1 | sed -n 's/^designated => //p')"
+    if [ "$OLD" != "$NEW" ]; then
+        echo "this build is signed differently from the installed $NAME, so macOS would ask for every permission again:" >&2
+        echo "  installed:  $OLD" >&2
+        echo "  this build: $NEW" >&2
+        if [ "$NAME" = car ] && [ "${NEW_SIGNATURE:-0}" != 1 ]; then
+            echo "not installing; NEW_SIGNATURE=1 ./build.sh release installs it anyway" >&2
+            exit 1
+        fi
+    fi
+fi
+
 # The new build's own command reads the same folder as the installed copy, so
 # it can say whether that copy is in the middle of a session.
 if ! "$BUILT/Contents/MacOS/$NAME" status >/dev/null; then
@@ -75,7 +106,7 @@ if ! "$BUILT/Contents/MacOS/$NAME" status >/dev/null; then
     exit 1
 fi
 
-# Quit the running copy, found by bundle id so an `car session` someone is
+# Quit the running copy, found by bundle id so a `car session` someone is
 # waiting on is never touched. SIGTERM is a quit: car closes a session that
 # started in the last moment rather than cutting it off.
 PID="$(lsappinfo info -only pid -app "$BUNDLE_ID" | sed -nE 's/.*"pid"=([0-9]+).*/\1/p')"
@@ -89,11 +120,9 @@ if [ -n "$PID" ]; then
     fi
 fi
 
+# Copied with its signature, which ditto keeps intact.
 rm -rf "$APP"
-cp -R "$BUILT" "$APP"
-SIGN="${IDENTITY:--}"
-echo "==> signing $APP"
-codesign --force --deep --options runtime --entitlements "$HERE/App/car.entitlements" --sign "$SIGN" "$APP"
+ditto "$BUILT" "$APP"
 codesign --verify --strict "$APP"
 
 echo "==> installed $APP; it links $HOME/.local/bin/$NAME when it starts"

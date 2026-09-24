@@ -57,7 +57,11 @@ The person uses the real car while you work. **Never stop, restart or replace
   asks. car is not distributed as a download; whoever wants it builds it.
 - The dev copy needs its own grants (Accessibility, Microphone, Screen
   Recording, Automation) before it can record. Only the person can give them,
-  from its Settings → Permissions.
+  from its Settings → Permissions. macOS keys them to the bundle id and the
+  signing certificate, so rebuilds keep them: `build.sh` signs with the
+  certificate the installed copy already has, and will not install a real
+  car signed any other way without `NEW_SIGNATURE=1`. Never change a bundle
+  id or the signing casually; it costs the person every grant.
 
 ## Rules
 

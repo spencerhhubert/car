@@ -255,7 +255,11 @@ The version, the commit it was built from, is in Settings → About and in
 Then, in Settings → Permissions: **Accessibility** (the keys, and what is
 focused), **Microphone**, **Screen Recording** (pictures, and fading drawings
 when the screen changes), and **Automation** for Finder and each browser
-(their selection and tabs). Each is a one-time system prompt.
+(their selection and tabs). Each is a one-time system prompt: macOS keeps a
+grant for as long as the app keeps its bundle id and is signed with the same
+certificate, which `build.sh` holds to (it refuses a real car signed any
+other way unless `NEW_SIGNATURE=1`). The development copy is another app to
+macOS, with grants of its own.
 
 ## The command
 

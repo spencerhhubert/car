@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import OwlKit
 import OSAKit
 
 // What is in front of the person, read two ways at once.
@@ -73,7 +74,7 @@ enum Adapters {
         }
         if let focused = AX.element(app, kAXFocusedUIElementAttribute) {
             r.focus = AX.describe(focused, valueLimit: 300).mapValues { "\($0)" }
-            r.focusIsText = TextProbe.isEditableText(focused)
+            r.focusIsText = AX.takesTyping(focused)
         }
         if let kind = kind(of: front) {
             let fields: [String: Any]

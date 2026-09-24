@@ -1,9 +1,10 @@
 import AppKit
+import OwlKit
 
 // The drawing layer: the tool in hand, the ink, the marks of the session being
 // recorded, and the transparent windows they are drawn on. The pill
-// (Pill.swift) is where a tool and an ink are picked; Marks.swift is what a
-// mark is.
+// (Pill.swift) is where a tool and an ink are picked; what a mark is, and
+// when one fades, are OwlKit's Marks.swift and Fading.swift.
 //
 // With no tool in hand the layer lets every click through to the apps and only
 // shows the marks. With one, it takes the mouse on every screen: a drag draws,
@@ -18,12 +19,6 @@ import AppKit
 // exist only while there is something to show, and go when the session does.
 @MainActor
 final class Drawing: ObservableObject {
-    /// A mark holds this long, then fades over `slowFade`…
-    static let hold: TimeInterval = 6
-    static let slowFade: TimeInterval = 3
-    /// …or fades over this once what it was drawn on has changed.
-    static let quickFade: TimeInterval = 0.5
-
     /// The tool in hand, or nil when the pointer belongs to the apps.
     @Published private(set) var tool: Tool?
     /// One ink for every tool, kept from one session to the next.
@@ -41,7 +36,7 @@ final class Drawing: ObservableObject {
     private var onMark: (Mark) -> Void = { _ in }
     private var onFade: (Mark, Fade) -> Void = { _, _ in }
     private var onClear: ([Mark]) -> Void = { _ in }
-    private lazy var change = ScreenChange { [weak self] n in self?.fade(n, over: Self.quickFade, because: .screen) }
+    private lazy var change = ScreenChange { [weak self] n in self?.fade(n, over: Fading.quickly, because: .screen) }
     private var windows: [CanvasWindow] = []
     private var escape: EscapeTap?
     private var screens: NSObjectProtocol?
@@ -136,9 +131,9 @@ final class Drawing: ObservableObject {
         change.track(m)
         let n = m.n
         timers[n] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(Self.hold))
+            try? await Task.sleep(for: .seconds(Fading.hold))
             guard !Task.isCancelled else { return }
-            self?.fade(n, over: Self.slowFade, because: .time)
+            self?.fade(n, over: Fading.slowly, because: .time)
         }
     }
 

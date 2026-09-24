@@ -10,14 +10,15 @@ import Foundation
 // number. The mark in the timeline, on the screen and in the picture is one
 // thing, so "this part here" has an answer.
 //
-// Points are in the display space (Space, in AX.swift). Drawing.swift is the
-// layer on the screen that takes the mouse and shows the marks.
+// Points are in the display space: points from the top-left of the main
+// display, y down, the space the accessibility API and ScreenCaptureKit use.
+// The app's drawing layer (App/Drawing) takes the mouse and shows the marks.
 
-enum Tool: String, CaseIterable, Sendable {
+public enum Tool: String, CaseIterable, Sendable {
     case pen, arrow, circle, rectangle
 
     /// What a mark made with it is called: "the red circle".
-    var noun: String {
+    public var noun: String {
         switch self {
         case .pen: "stroke"
         case .arrow: "arrow"
@@ -26,7 +27,7 @@ enum Tool: String, CaseIterable, Sendable {
         }
     }
 
-    var symbol: String {
+    public var symbol: String {
         switch self {
         case .pen: "pencil.tip"
         case .arrow: "arrow.up.right"
@@ -37,13 +38,13 @@ enum Tool: String, CaseIterable, Sendable {
 
     /// A shape is drawn once and the pointer goes back to the apps; the pen
     /// stays in hand for the next stroke. Excalidraw's rule.
-    var staysInHand: Bool { self == .pen }
+    public var staysInHand: Bool { self == .pen }
 }
 
-enum Ink: String, CaseIterable, Sendable {
+public enum Ink: String, CaseIterable, Sendable {
     case red, yellow, green, blue, purple
 
-    var cgColor: CGColor {
+    public var cgColor: CGColor {
         switch self {
         case .red: CGColor(srgbRed: 1.00, green: 0.23, blue: 0.19, alpha: 1)
         case .yellow: CGColor(srgbRed: 1.00, green: 0.80, blue: 0.00, alpha: 1)
@@ -54,26 +55,26 @@ enum Ink: String, CaseIterable, Sendable {
     }
 
     /// The number on a badge of this ink.
-    var onInk: CGColor { self == .yellow ? CGColor(gray: 0, alpha: 1) : CGColor(gray: 1, alpha: 1) }
+    public var onInk: CGColor { self == .yellow ? CGColor(gray: 0, alpha: 1) : CGColor(gray: 1, alpha: 1) }
 }
 
-struct Mark: Sendable {
+public struct Mark: Sendable {
     /// Line width in points, on the screen and (scaled) in pictures.
-    static let width: CGFloat = 4
+    public static let width: CGFloat = 4
     /// The dark edge under every line, so any ink shows on any background.
-    static let edge = CGColor(gray: 0, alpha: 0.45)
+    public static let edge = CGColor(gray: 0, alpha: 0.45)
 
-    let n: Int
-    let tool: Tool
-    let ink: Ink
+    public let n: Int
+    public let tool: Tool
+    public let ink: Ink
     /// The pen's stroke, point by point; for the others, where the drag began
     /// and where it has got to.
-    private(set) var points: [CGPoint]
+    public private(set) var points: [CGPoint]
     /// Session ms at the press and at the release.
-    let start: Int
-    var end: Int
+    public let start: Int
+    public var end: Int
 
-    init(n: Int, tool: Tool, ink: Ink, at p: CGPoint, time: Int) {
+    public init(n: Int, tool: Tool, ink: Ink, at p: CGPoint, time: Int) {
         self.n = n
         self.tool = tool
         self.ink = ink
@@ -82,21 +83,21 @@ struct Mark: Sendable {
         end = time
     }
 
-    var name: String { "\(ink.rawValue) \(tool.noun) \(n)" }
+    public var name: String { "\(ink.rawValue) \(tool.noun) \(n)" }
 
-    var bounds: CGRect {
+    public var bounds: CGRect {
         let xs = points.map(\.x), ys = points.map(\.y)
         return CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
     }
 
     /// What the mark is about: where an arrow points, the middle of anything else.
-    var anchor: CGPoint {
+    public var anchor: CGPoint {
         tool == .arrow ? points[1] : CGPoint(x: bounds.midX, y: bounds.midY)
     }
 
     /// Where its number goes in a picture: the arrow's tail, a shape's
     /// top-left corner, the start of a stroke.
-    var badge: CGPoint {
+    public var badge: CGPoint {
         switch tool {
         case .circle, .rectangle: CGPoint(x: bounds.minX, y: bounds.minY)
         case .pen, .arrow: points[0]
@@ -104,11 +105,11 @@ struct Mark: Sendable {
     }
 
     /// Was this a drag at all, or a click?
-    var isDrawn: Bool { max(bounds.width, bounds.height) >= 5 }
+    public var isDrawn: Bool { max(bounds.width, bounds.height) >= 5 }
 
     /// The drag has reached `p`. Constrained (shift held): a circle rather
     /// than an ellipse, a square, an arrow at a multiple of 45°.
-    mutating func extend(to p: CGPoint, constrained: Bool) {
+    public mutating func extend(to p: CGPoint, constrained: Bool) {
         let a = points[0]
         switch tool {
         case .pen:
@@ -135,7 +136,7 @@ struct Mark: Sendable {
 
     /// The mark as a path, every point passed through `map` into a view's or
     /// a picture's coordinates.
-    func path(_ map: (CGPoint) -> CGPoint) -> CGPath {
+    public func path(_ map: (CGPoint) -> CGPoint) -> CGPath {
         let path = CGMutablePath()
         switch tool {
         case .pen:
@@ -182,7 +183,7 @@ struct Mark: Sendable {
 
     /// Draw the mark into a picture: the stroke as it was on the screen, and
     /// its number. `scale` is pixels per point; the context is y-up.
-    func draw(in ctx: CGContext, scale: CGFloat, map: (CGPoint) -> CGPoint) {
+    public func draw(in ctx: CGContext, scale: CGFloat, map: (CGPoint) -> CGPoint) {
         let path = self.path(map)
         ctx.saveGState()
         defer { ctx.restoreGState() }
@@ -219,7 +220,7 @@ struct Mark: Sendable {
 
     /// The mark as events.jsonl has it. Coordinates are whole points in the
     /// display space; a stroke is thinned to at most 64 points.
-    var fields: [String: Any] {
+    public var fields: [String: Any] {
         func xy(_ p: CGPoint) -> [Int] { [Int(p.x.rounded()), Int(p.y.rounded())] }
         let b = bounds
         var f: [String: Any] = [

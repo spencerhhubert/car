@@ -3,17 +3,22 @@ options:
   bundleIdPrefix: com.owl
   deploymentTarget:
     macOS: "26.0"
+packages:
+  OwlKit:
+    path: OwlKit
 targets:
   owl:
     type: application
     platform: macOS
     sources:
-      - owl
+      - App
       # `owl guide` prints it.
       - path: README.md
         buildPhase: resources
+    dependencies:
+      - package: OwlKit
     info:
-      path: owl/Info.plist
+      path: App/Info.plist
       properties:
         # Menu bar only. The recording pill is its own floating panel; there is
         # no window to put in the Dock.
@@ -21,12 +26,12 @@ targets:
         # owl, or owl-dev for the development copy (build.sh sets PRODUCT_NAME).
         CFBundleDisplayName: $(PRODUCT_NAME)
         NSHumanReadableCopyright: ""
-        NSMicrophoneUsageDescription: "owl records your voice for the length of a session you start by holding Option."
+        NSMicrophoneUsageDescription: "owl records your voice for as long as a session you start with ⌘⇧R runs."
         # Finder's selection and a browser's front tab are read with Apple
         # events when the accessibility tree does not carry them.
         NSAppleEventsUsageDescription: "owl asks Finder which files you have selected and a browser which page is open, so a session can say what was in front of you."
     entitlements:
-      path: owl/owl.entitlements
+      path: App/owl.entitlements
       properties:
         com.apple.security.app-sandbox: false
         # Hardened runtime gates the microphone and Apple events behind these

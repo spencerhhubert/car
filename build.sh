@@ -40,8 +40,11 @@ if [ -n "$IDENTITY" ]; then
 fi
 
 cd "$HERE"
-[ -d owl/Assets.xcassets ] || swift tools/make-icon.swift
+[ -d App/Assets.xcassets ] || swift tools/make-icon.swift
 xcodegen >/dev/null
+
+echo "==> testing OwlKit"
+swift test --package-path OwlKit -q 2>&1 | tail -5 || { echo "tests failed; nothing installed" >&2; exit 1; }
 
 echo "==> building $NAME"
 if [ -n "$IDENTITY" ]; then
@@ -88,7 +91,7 @@ rm -rf "$APP"
 cp -R "$BUILT" "$APP"
 SIGN="${IDENTITY:--}"
 echo "==> signing $APP"
-codesign --force --deep --options runtime --entitlements "$HERE/owl/owl.entitlements" --sign "$SIGN" "$APP"
+codesign --force --deep --options runtime --entitlements "$HERE/App/owl.entitlements" --sign "$SIGN" "$APP"
 codesign --verify --strict "$APP"
 
 mkdir -p "$HOME/.local/bin"

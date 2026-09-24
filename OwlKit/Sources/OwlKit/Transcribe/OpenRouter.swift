@@ -1,9 +1,15 @@
 import Foundation
 
 // OpenRouter: the words, and optionally the times, from a cloud model.
-enum OpenRouter {
-    struct Model: Codable { let id: String; let name: String }
+public enum OpenRouter {
+    public struct Model: Codable, Sendable {
+        public let id: String
+        public let name: String
+        public init(id: String, name: String) { self.id = id; self.name = name }
+    }
     struct Segment: Codable { var start: Double; var end: Double; var text: String }
+    /// Sound to send, and what it is (mp3, m4a).
+    struct Audio { let data: Data; let format: String }
 
     private static let url = URL(string: "https://openrouter.ai/api/v1/chat/completions")!
 
@@ -23,18 +29,16 @@ enum OpenRouter {
     """
 
     /// The words, as one plain text.
-    static func transcribe(audio: Data, format: String, model: String, key: String) async throws -> (String, Double?) {
+    static func transcribe(audio: Audio, model: String, key: String) async throws -> (String, Double?) {
         let (text, cost) = try await chat(model: model, system: transcribePrompt,
-                                          userText: "Transcribe this recording.",
-                                          audio: audio, format: format, key: key)
+                                          userText: "Transcribe this recording.", audio: audio, key: key)
         return (text.trimmingCharacters(in: .whitespacesAndNewlines), cost)
     }
 
     /// Timed segments, from a model asked to keep time itself.
-    static func timedSegments(audio: Data, format: String, model: String, key: String) async throws -> ([Segment], Double?) {
+    static func timedSegments(audio: Audio, model: String, key: String) async throws -> ([Segment], Double?) {
         let (text, cost) = try await chat(model: model, system: timesPrompt,
-                                          userText: "Transcribe this recording with timestamps.",
-                                          audio: audio, format: format, key: key)
+                                          userText: "Transcribe this recording with timestamps.", audio: audio, key: key)
         var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if body.hasPrefix("```") {
             body = body.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "")
@@ -49,12 +53,12 @@ enum OpenRouter {
         return (segs, cost)
     }
 
-    static func chat(model: String, system: String, userText: String, audio: Data?, format: String?,
+    static func chat(model: String, system: String, userText: String, audio: Audio?,
                      key: String) async throws -> (String, Double?) {
         var content: [[String: Any]] = [["type": "text", "text": userText]]
-        if let audio, let format {
+        if let audio {
             content.append(["type": "input_audio",
-                            "input_audio": ["data": audio.base64EncodedString(), "format": format]])
+                            "input_audio": ["data": audio.data.base64EncodedString(), "format": audio.format]])
         }
         var body: [String: Any] = [
             "model": model,
@@ -104,7 +108,7 @@ enum OpenRouter {
     }
 
     /// Every model that takes audio in.
-    static func audioModels(key: String) async throws -> [Model] {
+    public static func audioModels(key: String) async throws -> [Model] {
         var req = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/models")!)
         req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         let (data, _) = try await URLSession.shared.data(for: req)

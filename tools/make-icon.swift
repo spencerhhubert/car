@@ -2,12 +2,12 @@
 //
 //     swift tools/make-icon.swift        (from the repo root)
 //
-// Writes owl/Assets.xcassets in place; the output is committed, and build.sh
+// Writes App/Assets.xcassets in place; the output is committed, and build.sh
 // runs this only when the catalog is missing.
 import AppKit
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let set = root.appendingPathComponent("owl/Assets.xcassets/AppIcon.appiconset")
+let set = root.appendingPathComponent("App/Assets.xcassets/AppIcon.appiconset")
 try FileManager.default.createDirectory(at: set, withIntermediateDirectories: true)
 
 func render(_ px: Int) -> Data {
@@ -40,5 +40,5 @@ let contents: [String: Any] = ["images": images, "info": ["version": 1, "author"
 try JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys])
     .write(to: set.appendingPathComponent("Contents.json"))
 try #"{"info":{"version":1,"author":"xcode"}}"#.data(using: .utf8)!
-    .write(to: root.appendingPathComponent("owl/Assets.xcassets/Contents.json"))
+    .write(to: root.appendingPathComponent("App/Assets.xcassets/Contents.json"))
 print("wrote \(images.count) icons")

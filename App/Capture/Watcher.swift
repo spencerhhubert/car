@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import OwlKit
 
 // Watches what the person does while a session records and writes it to the
 // session as events. Five sources, all read-only:
@@ -202,12 +203,12 @@ final class Watcher {
                                                    into: self.session.dir.appending(path: "shots"),
                                                    name: String(format: "%08d", t), force: force)
             else { return }
-            var f: [String: Any] = ["file": "shots/\(file)", "why": why]
+            var f: [String: Any] = ["why": why]
             if case .window = target {
                 f["app"] = app
                 f["title"] = title
             }
-            self.session.event("shot", f, at: t)
+            self.session.shot(file, at: t, f)
         }
     }
 
@@ -261,9 +262,9 @@ final class Watcher {
             read({ Adapters.under(p) }) { [weak self] under in
                 self?.session.event("click", head.merging(under) { mine, _ in mine }, at: t)
             }
-            // A click is a moment worth a picture even when little changed:
-            // a scrub on a slider moves a few pixels.
-            take("click", delay: 0.35, force: true)
+            // A picture after a click, when the screen changed: a session
+            // runs for hours, and most clicks change nothing worth keeping.
+            take("click", delay: 0.35)
             scheduleTick()
         case .scrollWheel:
             scrollDelta += Double(e.scrollingDeltaY)
@@ -331,7 +332,7 @@ final class Watcher {
     private func focusedIsText() -> Bool {
         guard let front = NSWorkspace.shared.frontmostApplication,
               let el = AX.element(AX.app(front.processIdentifier), kAXFocusedUIElementAttribute) else { return false }
-        return TextProbe.isEditableText(el)
+        return AX.takesTyping(el)
     }
 
     private func flushTyping() {

@@ -1,12 +1,13 @@
 import AppKit
 import ApplicationServices
+import OwlKit
 
 // Small helpers over the accessibility API. Everything here is a read; owl
 // never posts an action into another app. Each call is a synchronous message
 // to the other app, answered when that app gets round to it (or after the
 // messaging timeout), so they are made on the reader queue (Adapters.swift),
-// never on the main thread; the one exception is TextProbe, which has to
-// answer a double-click on the spot.
+// never on the main thread; the one exception is the watcher asking whether a
+// key went into a text field, which has to be answered on the spot.
 enum AX {
     static func copy(_ e: AXUIElement, _ attr: String) -> CFTypeRef? {
         var value: CFTypeRef?
@@ -105,6 +106,15 @@ enum AX {
               AXUIElementCopyElementAtPosition(app(w.pid), Float(p.x), Float(p.y), &hit) == .success
         else { return nil }
         return hit
+    }
+
+    private static let textRoles: Set<String> = [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole]
+
+    /// Whether an element takes typing: a text role with a settable value, or
+    /// anything with a settable value and a text selection.
+    static func takesTyping(_ e: AXUIElement) -> Bool {
+        if let role = string(e, kAXRoleAttribute), textRoles.contains(role) { return settable(e, kAXValueAttribute) }
+        return copy(e, kAXSelectedTextRangeAttribute) != nil && settable(e, kAXValueAttribute)
     }
 
     // MARK: - describing an element

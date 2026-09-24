@@ -3,3 +3,4 @@ owl.xcodeproj/
 agent-notes.local/
 *.local.*
 .DS_Store
+.swiftpm/

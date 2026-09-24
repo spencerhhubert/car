@@ -1,7 +1,8 @@
 import CoreGraphics
 import Foundation
 import ImageIO
-import ScreenCaptureKit
+import OwlKit
+@preconcurrency import ScreenCaptureKit
 import UniformTypeIdentifiers
 
 // Pictures of the screen, taken when something changed: a new window in front,

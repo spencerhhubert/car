@@ -1,204 +1,58 @@
 # owl 🦉
 
-A menu bar app for the Mac that records your voice and everything you do on
-the computer, as one timeline: every word with the moment it was said, and
-every app, window, click, selection, page and file that was in front of you
-when you said it, with pictures.
+A Mac menu bar app for talking to an AI agent about what is on your screen.
+Start a session and talk while you work, circling or pointing at things as
+you go. owl records it as one timeline: every word with the moment it was
+said, next to the app, page, click and selection on screen at that moment,
+with pictures. When you stop, the clipboard gets one line. Paste it into an
+agent and it reads the whole session.
 
-Hold ⌥ and talk. Let go to stop, or keep holding past 1.5 s and it latches:
-you can let go and the session runs until you press ⌥ again. A double-click
-inside a text field also starts one. A pill at the bottom of the screen shows
-it is recording, with the level, and carries the drawing tools, a stop button
-and an X that throws the session away.
+**Why:** feedback and ideas come fastest out loud, while pointing at the
+thing. A typed message keeps a fraction of that. A session keeps all of it:
+what you said, what "this" and "right there" meant, and what the screen showed
+when you said it.
 
-Nothing plays, nothing is uploaded except the audio to the transcription
-model you chose.
+![A session in a CAD model: talking, a red circle drawn from the pill, then stop and transcribe](docs/media/demo.gif)
 
-## Drawing while you talk
+The captions are owl's own transcript of that session, at the times owl gave
+each word.
 
-The pill has a pen, an arrow, a circle and a rectangle, and one row of inks
-(red, yellow, green, blue, purple) shared by all four. Pick a tool and drag
-anywhere on any screen. A shape is drawn once and the pointer goes back to your
-apps; the pen stays in hand for the next stroke. A click without a drag, Esc,
-or the tool's button again puts a tool down. ⇧ makes a true circle, a square,
-or an arrow at 45°.
+## What the agent gets
 
-A drawing is a gesture made while talking, not a note left on the screen: it
-holds for six seconds and fades over three. When what it was drawn on changes
-a lot (another tab, a scroll, a model turned), it fades in half a second. owl
-watches the screen under each drawing with a small, slow capture while
-drawings are up, and not at all otherwise. The bin wipes them all at once.
-
-Each drawing is a mark, numbered in the order drawn: *red circle 1*, *blue
-arrow 2*. It is recorded with what it was drawn on, set into the words at the
-moment it was drawn, drawn with its number into every picture taken while it
-is up, and gets a picture of the whole screen the moment it is finished. So
-"this part here" has an answer:
+`owl session 20260924-124432`, the session above, trimmed (`…`) and with the
+document's URL shortened:
 
 ```
-[00:12.050–00:15.900] “so this part here {red circle 1} is the one that's wrong”
-[00:13.200] drew red circle 1 around button “Save” in Safari “Settings”
-[00:13.260] picture shots/00013260.jpg (red circle 1)
-[00:16.410] red circle 1 faded as the screen under it changed
+[00:00.133–00:24.464] “All right, let's see what we have here. Um, this looks this looks more accurate, although we're still getting a clearance pro- we're getting a separate clearance problem right right there, {red circle 1} uh, which is probably worth investigating.”
+[00:00.134] app → Brave Browser
+[00:00.134] page https://cad.onshape.com/documents/… “400_Sorter V2 - Electronics | PSU wiring review”
+[00:00.451] picture shots/00000451.jpg (app)
+[00:00.722] click left Brave Browser image
+[00:01.094] picture shots/00001094.jpg (click)
+…
+[00:12.011] scroll 14 in Brave Browser over image
+[00:12.118] picture shots/00012118.jpg (scroll)
+[00:18.512] drew red circle 1 around image in Brave Browser “400_Sorter V2 - Electronics | PSU wiring review”
+[00:18.581] picture shots/00018581.jpg (red circle 1)
+[00:20.680] click left Brave Browser image
+[00:21.059] red circle 1 faded as the screen under it changed
+…
+[00:24.464–00:28.981] “The rest of it seems legit to me, though.”
+[00:24.915] click left Brave Browser image
+[00:25.290] picture shots/00025290.jpg (click)
+[00:30.610] session end
 ```
 
-## When a session ends
+`{red circle 1}` sits where it was drawn in the sentence, and every picture
+taken while it was up has it drawn in with its number:
 
-It is transcribed in the background, and the next session can start at once.
-The clipboard does not get the words. It gets one line, `new owl session
-20260922-104412`, for pasting into an agent that knows owl: it reads the
-session with `owl session <id>`, which waits if the words are not in yet, and
-gets all of it: what you said, what was on the screen while you said it, what
-you drew, and the pictures. The menu's *Copy last session for an agent* puts
-the line back, and `owl pointer <id>` prints it.
+<img src="docs/media/red-circle-1.jpg" width="420" alt="shots/00018581.jpg, cropped: the red circle with its number 1">
 
-A session is `recording`, then `transcribing`, then `done` or `failed`
-(`meta.json` says which). Whoever is recording or transcribing one holds its
-lock, so a session a crash or a quit left unfinished is found and finished
-by the app at its next launch, or by `owl session` when asked for it.
+## Try it
 
-## What a session looks like
+Needs macOS 26, Xcode and `xcodegen`. `./build.sh release` builds and
+installs it, then grant its permissions from the 🦉 menu. How to start a
+session, draw and stop is in the [guide](docs/guide.md). An agent learns to
+read sessions from [`skill/SKILL.md`](skill/SKILL.md).
 
-```
-sessions/20260922-104412/
-  audio.m4a        the microphone, 16 kHz mono AAC
-  events.jsonl     what happened, one event per line
-  shots/*.jpg      the focused window when something changed; the whole screen for a drawing
-  transcript.txt   the words
-  words.json       every word: start and end in ms on the session clock, and how it was timed
-  session.md       the timeline, words and events interleaved
-  meta.json        when, how long, its state, which models, cost
-  .lock            held by whoever is recording or transcribing it
-```
-
-`session.md` is meant to be read by a person or an agent:
-
-```
-[00:02.100] app → Finder
-[00:02.350] window Finder “Downloads” (file:///Users/me/Downloads/)
-[00:02.600] picture shots/00002600.jpg (window)
-[00:03.120–00:05.870] “okay so these two files here”
-[00:04.200] click left Finder row “IMG_1234.MOV”
-[00:04.400] finder in /Users/me/Downloads/ selected: /Users/me/Downloads/IMG_1234.MOV, /Users/me/Downloads/IMG_1235.MOV
-```
-
-An agent reading sessions should start from `skill/SKILL.md`. Everything an
-agent might want beyond the timeline is a file beside it: `words.json`
-for the exact moment of a word, `events.jsonl` for the full detail of an
-event (the whole accessibility description of what was clicked), `shots/` for
-what the screen showed. The timeline names each picture so a reader can open
-the one it needs.
-
-Times are milliseconds on one monotonic clock for words and events alike, so
-"the word *here*" and "the click" are directly comparable. Each word also
-carries its position in the audio file (`s`, `e`, seconds) for pulling that
-moment of sound. Places on the screen (a click, a mark) are in points from the
-top-left corner of the main display, the space the accessibility API and the
-window server use.
-
-## What gets recorded
-
-Two readings of what is in front of you, both always taken:
-
-- **Generic, every app.** The front app, its focused window's title and
-  document (a path or URL, for apps that say), the focused element (role,
-  title, value, selected text), clicks with the element under the pointer,
-  scrolls, shortcuts (`⌘S`), and typing as *how many keys went into which
-  field, and what the field then held*. Keystrokes themselves are never
-  logged, and a password field's value is never read.
-- **Adapters, for apps with a better answer.** Finder: the folder in front
-  and the files selected in it. Browsers (Safari, Chrome, Brave, Arc, Edge,
-  Vivaldi): the front tab's URL and title. An app that ships a command of its
-  own name in `Contents/Resources` with a `desk` subcommand: what it prints.
-  Adding an adapter is one function in `owl/Adapters.swift` that returns a
-  dictionary.
-
-All of this is asked of other apps off the main thread, each question with a
-short limit, so a hung app costs a reading and never the pill or the session.
-
-Pictures: a JPEG of the focused window, at most ~1.5 MP, when the front app
-or window changes, after a click or a scroll, never more than one every 0.7 s
-unless the moment calls for one (a click, a drawing), and only when it differs
-from the last one (a difference hash). A drawing gets a picture of its whole
-screen. What was recorded as text is always also recorded as a picture,
-because the text reading is sometimes wrong about what a window is showing.
-owl's own pill and drawing layer are never in a picture; the drawings are
-drawn in by owl, with their numbers.
-
-## How the words get their times
-
-Two models, two jobs:
-
-1. **The words** come from a cloud model on OpenRouter (default
-   `google/gemini-3-flash-preview`), asked for a verbatim transcript with the
-   fillers left in. Pick any audio-capable model from the menu or with
-   `owl config textModel <id>`; `owl models` lists them.
-2. **The times** come from Apple's on-device recognizer, which stamps every
-   run of its own transcript with the audio range it was heard in. Its words
-   are worse; its clock is real, because it comes from the sound rather than
-   from a model's sense of where in a file a sentence sits.
-
-The two are lined up by a global word alignment (`owl/Align.swift`): each
-word of the text model's transcript that matches a timed word takes its
-time; a word with no partner is placed between its matched neighbours by its
-length. Then every word's start is moved to the onset actually heard in the
-sound, inside a short window around the recognizer's boundary
-(`owl/Refine.swift`), which is what gets it within a frame.
-
-`words.json` says how each word was timed: `matched`, `interpolated`, with
-`+onset` when the start was snapped.
-
-**Judging a time source.** `owl bench <id> --model <id>` asks a model for
-its own timestamped segments, lays the same words onto both and reports the
-per-word difference in start time. On a 14 s clip, `google/gemini-3-flash-preview`
-placed words a median 717 ms from the on-device times, 4% within one frame,
-which is why it does not keep time by default. `owl config timeSource
-openrouter:<model>` switches to a model's clock if one ever does better.
-
-## Install
-
-Needs macOS 26 (the on-device recognizer), Xcode, and `xcodegen`
-(`brew install xcodegen`). `ffmpeg` is optional: with it the audio is sent
-to the text model as a small mp3, without it as the AAC file it was recorded
-as.
-
-```
-./build.sh release
-```
-
-builds, signs with the first Apple Development identity in the keychain
-(ad hoc without one), installs `/Applications/owl.app`, links the `owl`
-command into `~/.local/bin`, and launches it. It refuses while owl is
-recording or transcribing, and otherwise quits the running copy properly
-first. Plain `./build.sh` builds the development copy instead,
-`/Applications/owl-dev.app` and the `owl-dev` command, which runs beside the
-real one with its own sessions, settings, log and permissions and the gesture
-off until turned on from its menu, so owl can be worked on while it is in
-use. Then, from the owl menu →
-Permissions: **Accessibility** (to see the gesture and what is focused),
-**Microphone**, **Screen Recording** (pictures), and **Automation** for
-Finder and each browser (their selection and tabs). Each is a one-time
-system prompt.
-
-The OpenRouter key goes in `~/Library/Application Support/owl/openrouter.key`
-(one line) or `OPENROUTER_API_KEY`. Without one, sessions are still recorded
-and timed; the words are then the on-device recognizer's.
-
-## The command
-
-```
-owl sessions                          every session, with its state
-owl session last                      the timeline; waits for a transcription in progress
-owl pointer last                      the line for an agent
-owl guide                             this file
-owl status                            what is being recorded or transcribed now
-owl transcribe last [--text-model M] [--time-source apple|openrouter:M]
-owl bench last --model M              a model's clock against the on-device one
-owl models                            audio-capable models on OpenRouter
-owl config [key value]                textModel, timeSource, doubleClick, enabled
-owl render last                       rewrite session.md from what is on disk
-```
-
-Everything lives under `~/Library/Application Support/owl/`; the log is
-`~/Library/Logs/owl.log`. The development copy's are `owl-dev` in both
-places.
+Everything else is in [docs](docs/README.md).

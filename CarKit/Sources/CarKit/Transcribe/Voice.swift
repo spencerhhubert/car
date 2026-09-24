@@ -1,5 +1,4 @@
 import Accelerate
-import AVFoundation
 import Foundation
 
 // Where in a stretch of sound someone is talking: voice activity detection,
@@ -39,22 +38,11 @@ public enum Voice {
         public var length: Double { end - start }
     }
 
-    /// The voiced segments of a file.
+    /// The voiced segments of a file, and its samples, at the rate
+    /// transcription hears everything at.
     public static func segments(url: URL) throws -> (segments: [Segment], samples: [Float], rate: Double) {
-        let (samples, rate) = try read(url)
-        return (segments(samples, rate: rate), samples, rate)
-    }
-
-    /// The whole file as mono floats at its own rate.
-    static func read(_ url: URL) throws -> ([Float], Double) {
-        let file = try AVAudioFile(forReading: url)
-        let format = file.processingFormat
-        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)) else {
-            throw Failure("cannot read \(url.lastPathComponent)")
-        }
-        try file.read(into: buf)
-        guard let ch = buf.floatChannelData?[0] else { throw Failure("\(url.lastPathComponent) has no samples") }
-        return (Array(UnsafeBufferPointer(start: ch, count: Int(buf.frameLength))), format.sampleRate)
+        let samples = try Sound.heard(url)
+        return (segments(samples, rate: Sound.heardRate), samples, Sound.heardRate)
     }
 
     public static func segments(_ x: [Float], rate: Double) -> [Segment] {

@@ -55,11 +55,11 @@ final class Watcher {
 
     init(session: Session) { self.session = session }
 
-    func start() {
+    func start(sound: SoundQuality) {
         listening = true
         writing = true
         session.event("session", ["phase": "start", "accessibility": AXIsProcessTrusted(),
-                                  "screen": Screenshot.hasPermission])
+                                  "screen": Screenshot.hasPermission, "sound": sound.rawValue])
         activation = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in

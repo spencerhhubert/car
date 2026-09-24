@@ -28,6 +28,7 @@ car marker <session> <n> --from -30m  the same, reaching back 30 minutes (or --f
 car session <session> [--from M] [--to M]   the timeline, any stretch of it
 car events <session> [--from M] [--to M]    every event, JSON, one a line (element names, URLs, paths, pictures)
 car words <session> [--from M] [--to M]     every word with its time, JSON
+car audio <session> [--from M] [--to M] --out F.wav   the sound itself, one file (for a video, say)
 ```
 
 `car marker` waits until the words up to the marker are transcribed, which

@@ -171,7 +171,9 @@ public enum Render {
     static func describe(_ e: [String: Any], shots: [Int: URL] = [:]) -> String? {
         let app = e["app"] as? String ?? ""
         switch e["kind"] as? String ?? "" {
-        case "session": return "session \(e["phase"] ?? "")"
+        case "session":
+            let sound = (e["sound"] as? String).flatMap(SoundQuality.init(rawValue:)).map { ", sound kept at \($0.summary)" }
+            return "session \(e["phase"] ?? "")" + (sound ?? "")
         case "app": return "app → \(app)"
         case "window":
             var s = "window \(app)" + q(e["title"])

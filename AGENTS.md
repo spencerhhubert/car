@@ -101,6 +101,7 @@ CarKit/                 a Swift package: everything that is not the Mac's screen
       Session.swift         a session: writing it (the app), reading it back (everyone); Clock; SessionLock
       Usage.swift           what transcription has cost
       Config.swift          settings, where things live, car vs car-dev
+      Sound.swift           the three sound qualities; sound as transcription hears it; a stretch as one file
       Log.swift             the log; Failure, the one error type
     Transcribe/           sound into timed words
       Transcriber.swift     a session's chunks, one at a time, as they close; settles the session

@@ -109,7 +109,7 @@ heavy data:
 
 ```
 sessions/20260924-122534/
-  audio/0001.m4a   the microphone, a chunk each, 16 kHz mono AAC
+  audio/0001.m4a   the microphone, a chunk each, at the session's sound quality
   shots/*.jpg      the focused window when something changed; the whole screen for a drawing
   session.md       the timeline, written out when the session finishes
   .lock            held by whoever is recording or transcribing it
@@ -143,6 +143,27 @@ when the Mac wakes from sleep, and when it is open but sends nothing for
 four seconds (another app took the camera it belongs to). If the microphone
 chosen still sends nothing after two tries, the session carries on with the
 system default, and the pill says so each time.
+
+## Sound quality
+
+Settings → Recording → Sound picks how a session keeps its sound, from the
+next session on:
+
+- **Low**: 16 kHz mono AAC, about 14 MB an hour. Enough for the words.
+- **Medium**: 48 kHz mono AAC at 160 kbps, about 70 MB an hour. Good enough
+  to publish: the narration of a video, say.
+- **High**: 48 kHz mono Apple Lossless, 24-bit, about 300 MB an hour (less
+  in a quiet room). The microphone exactly as it came.
+
+Transcription hears every quality at 16 kHz, so a better one costs disk and
+nothing else: not time, not money. A session's first line says which it was
+kept at (`session start, sound kept at 48 kHz, lossless`).
+
+`car audio <session> --from M --to M --out narration.wav` joins a stretch
+of a session's chunks back into one file (WAV, 24-bit, at the rate it was
+kept at), each chunk at its place on the session clock and silence where
+nothing was recorded, ready for a video editor. `M` is any moment, as for
+`car session`, so `--from m2 --to m3` is what was said between two markers.
 
 ## From sound to words
 
@@ -268,6 +289,8 @@ car marker [<id|last> [<n|last>]] [--from M]   what was said up to a marker; wai
 car session <id|last> [--from M] [--to M]      the timeline, whole or a stretch
 car events <id|last> [--from M] [--to M]       every event, JSON, one a line
 car words <id|last> [--from M] [--to M]        every word, JSON, one a line
+car audio <id|last> [--from M] [--to M] [--out FILE]
+                                               the sound of a stretch as one WAV, at the quality it was kept at
 car sessions                                   every session
 car status                                     what is being recorded or transcribed now
 car usage                                      what transcription has cost
@@ -275,7 +298,7 @@ car pointer <id|last>                          the line that hands over a whole 
 car transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
                                                transcribe what is left (or failed, or all of it again)
 car bench <id|last> [--chunk N] --model M      a model's clock against the on-device one
-car models | config [remoteModel|localModel|dictationPause|keys value] | render <id|last> | guide | version
+car models | config [remoteModel|localModel|soundQuality|dictationPause|keys value] | render <id|last> | guide | version
 ```
 
 A moment `M` is `start`, `end`, `m3` (marker 3), `-20m` or `-90s` (before

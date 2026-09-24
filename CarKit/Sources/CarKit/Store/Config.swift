@@ -30,6 +30,9 @@ public struct Config: Codable, Sendable {
     /// default at the moment a session starts.
     public var inputUID: String?
     public var inputName: String?
+    /// How the sound is kept (Sound.swift). Transcription hears the same
+    /// whichever it is.
+    public var soundQuality = SoundQuality.low
     /// Quick dictation (⇧ ⌥ ⌥) copies what was said since the last pause
     /// of at least this many seconds.
     public var dictationPause = 15.0
@@ -111,6 +114,7 @@ public struct Config: Codable, Sendable {
         localModel = try c.decodeIfPresent(String.self, forKey: .localModel) ?? d.localModel
         inputUID = try c.decodeIfPresent(String.self, forKey: .inputUID)
         inputName = try c.decodeIfPresent(String.self, forKey: .inputName)
+        soundQuality = try c.decodeIfPresent(SoundQuality.self, forKey: .soundQuality) ?? d.soundQuality
         dictationPause = try c.decodeIfPresent(Double.self, forKey: .dictationPause) ?? d.dictationPause
         keys = try c.decodeIfPresent(Bool.self, forKey: .keys) ?? d.keys
     }

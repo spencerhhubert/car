@@ -37,13 +37,13 @@ final class Recording {
                           Task { @MainActor in onTrouble(what) }
                       })
         do {
-            try await mic.start(into: session.dir, uid: config.inputUID)
+            try await mic.start(into: session.dir, uid: config.inputUID, quality: config.soundQuality)
         } catch {
             session.remove()
             throw error
         }
         let r = Recording(session: session, mic: mic, transcriber: transcriber, drawing: drawing)
-        r.watcher.start()
+        r.watcher.start(sound: config.soundQuality)
         drawing.begin(session, onMark: { [weak r] in r?.watcher.mark($0) },
                       onFade: { [weak r] in r?.watcher.faded($0, $1) },
                       onClear: { [weak r] in r?.watcher.cleared($0) })

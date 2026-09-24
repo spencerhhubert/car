@@ -139,10 +139,15 @@ struct SettingsView: View {
                 .textStyle(.note)
             }
 
-            Section("Recording") {
+            Section {
                 Picker("Microphone", selection: $model.input) {
                     Text("System Default").tag(String?.none)
                     ForEach(model.inputs, id: \.uid) { Text($0.name).tag(String?.some($0.uid)) }
+                }
+                Picker("Sound", selection: $model.config.soundQuality) {
+                    Text("Low").tag(SoundQuality.low)
+                    Text("Medium").tag(SoundQuality.medium)
+                    Text("High").tag(SoundQuality.high)
                 }
                 LabeledContent("Quick dictation starts after") {
                     HStack(spacing: Spacing.s) {
@@ -150,6 +155,11 @@ struct SettingsView: View {
                         Stepper("", value: $model.config.dictationPause, in: 5...120, step: 5).labelsHidden()
                     }
                 }
+            } header: {
+                Text("Recording")
+            } footer: {
+                Text("Sound: \(model.config.soundQuality.purpose) Transcription hears the same at any quality. A change is used from the next session.")
+                    .textStyle(.note)
             }
 
             Section {

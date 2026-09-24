@@ -62,6 +62,16 @@ opened) sending nothing, and nothing noticed. Now four seconds without a
 buffer reopens it, two failed tries fall back to the system default, and the
 pill says so.
 
+## Sound quality
+
+Sessions keep their sound at low (16 kHz AAC, what every session had until
+2026-09-24), medium (48 kHz AAC, 160 kbps) or high (48 kHz Apple Lossless),
+chosen in Settings; transcription reads every chunk at 16 kHz, so the
+choice changes nothing but the disk. `car audio` joins a stretch into one
+WAV for use elsewhere. Tested in CarKit (each quality written, heard and
+joined); not yet recorded live at medium or high. Pictures are still one
+quality; tiers for them are issue #8, which needs measuring first.
+
 ## Renaming owl to car
 
 The repo, the package (CarKit), the apps (car, car-dev), the bundle ids

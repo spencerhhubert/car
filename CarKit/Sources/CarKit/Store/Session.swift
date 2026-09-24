@@ -2,14 +2,15 @@ import AVFoundation
 import Foundation
 
 // A session is a stretch of recording, meant to run for hours: started and
-// stopped with ⌘⇧R, marked along the way (a marker hands an agent everything
+// stopped with ⌘ ⌥ ⌥, marked along the way (a marker hands an agent everything
 // up to it), its sound cut into chunks that are transcribed as they close.
 //
 // The catalog (Catalog.swift) holds everything about it. Its folder holds
 // only the heavy files, which the catalog points at:
 //
 //   sessions/<id>/
-//     audio/<n>.m4a    the microphone, one chunk each, 16 kHz mono AAC
+//     audio/<n>.m4a    the microphone, one chunk each, at the session's
+//                      sound quality (Sound.swift)
 //     shots/<t>.jpg    pictures of the screen
 //     session.md       the timeline, written out when the session finishes
 //     .lock            held by the process recording or transcribing it

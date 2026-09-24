@@ -12,6 +12,8 @@ import CarKit
 //                        the timeline; waits for a stopped session's last words
 //   car events <id|last> [--from M] [--to M]    every event, JSON, one a line
 //   car words <id|last> [--from M] [--to M]     every word, JSON, one a line
+//   car audio <id|last> [--from M] [--to M] [--out FILE]
+//                        the sound of a stretch as one file, at the quality it was kept at
 //   car sessions         every session, newest last
 //   car status           what is being recorded or transcribed now; exit 3 if anything
 //   car usage            what transcription has cost
@@ -64,6 +66,19 @@ enum CLI {
                 let (from, to) = try range(id, rest)
                 for w in Session.words(id, from: from, to: to ?? .max) {
                     line(["text": w.text, "start": w.start, "end": w.end, "chunk": w.chunk, "how": w.how])
+                }
+            case "audio":
+                let id = try resolve(positional.first)
+                let (from, to) = try range(id, rest)
+                let end = to ?? Session.record(id)?.lengthMs ?? Session.chunks(id).compactMap(\.endMs).max() ?? 0
+                let name = "\(id)-\(Render.clock(from))-\(Render.clock(end)).wav".replacingOccurrences(of: ":", with: "")
+                let out = URL(fileURLWithPath: flag(rest, "--out") ?? name)
+                let e = try Sound.export(id, from: from, to: end, into: out)
+                print("wrote \(out.path): \(Render.clock(Int(e.seconds * 1000)).dropLast(4)) at \(Int(e.rate / 1000)) kHz, " +
+                      "from \(count(e.chunks, "chunk"))")
+                if !e.unreadable.isEmpty {
+                    say("silence where chunk\(e.unreadable.count == 1 ? "" : "s") " +
+                        "\(e.unreadable.map(String.init).joined(separator: ", ")) should be: not finished, or still recording")
                 }
             case "sessions":
                 for s in Session.list() {
@@ -132,6 +147,9 @@ enum CLI {
                     case "dictationPause":
                         guard let v = Double(rest[1]), v > 0 else { throw Failure("dictationPause is seconds") }
                         c.dictationPause = v
+                    case "soundQuality":
+                        guard let q = SoundQuality(rawValue: rest[1]) else { throw Failure("soundQuality is low, medium or high") }
+                        c.soundQuality = q
                     case "keys": c.keys = rest[1] == "true"
                     default: throw Failure("unknown setting \(rest[0])")
                     }
@@ -140,6 +158,7 @@ enum CLI {
                 print("remoteModel \(c.remoteModel.isEmpty ? "none" : c.remoteModel)")
                 print("localModel  \(c.localModel)")
                 print("input       \(c.inputName ?? "system default")")
+                print("soundQuality \(c.soundQuality.rawValue) (\(c.soundQuality.summary))")
                 print("dictationPause \(Int(c.dictationPause)) s")
                 print("keys        \(c.keys)")
                 print("key         \(Config.openRouterKey == nil ? "missing" : "present")")
@@ -165,7 +184,7 @@ enum CLI {
     }
 
     /// Flags followed by a value.
-    private static let valued: Set<String> = ["--from", "--to", "--remote-model", "--local-model", "--chunk", "--model"]
+    private static let valued: Set<String> = ["--from", "--to", "--out", "--remote-model", "--local-model", "--chunk", "--model"]
 
     /// Before reading a session: wait while its lock holder transcribes it
     /// (up to `upTo`, or all of it once it stopped), and take over a session
@@ -252,11 +271,12 @@ enum CLI {
           \(car) session <id|last> [--from M] [--to M]      the timeline
           \(car) events <id|last> [--from M] [--to M]       every event, JSON lines
           \(car) words <id|last> [--from M] [--to M]        every word, JSON lines
+          \(car) audio <id|last> [--from M] [--to M] [--out FILE]   the sound of a stretch, one file
           \(car) sessions | status | usage
           \(car) pointer <id|last>
           \(car) transcribe <id|last> [--again|--all] [--remote-model M|none] [--local-model apple|none]
           \(car) bench <id|last> [--chunk N] [--model M]
-          \(car) models | config [remoteModel|localModel|dictationPause|keys VALUE] | render <id|last> | guide | version
+          \(car) models | config [remoteModel|localModel|soundQuality|dictationPause|keys VALUE] | render <id|last> | guide | version
 
         M: start, end, m3 (marker 3), -20m (before the end), 12:30 (session clock).
         Tap ⌥ twice: with ⌘ held to start or stop a session, alone to set a marker, with ⇧ held to copy

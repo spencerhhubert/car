@@ -3,10 +3,10 @@ import AVFoundation
 import CoreAudio
 import CarKit
 
-// The microphone, for as long as a session runs, as a run of chunks: 16 kHz
-// mono AAC files of about three minutes, each cut at a pause, so one is
-// transcribed while the next records and a crash loses at most the one being
-// written. A marker cuts the chunk on the spot. Each chunk's first sample is
+// The microphone, for as long as a session runs, as a run of chunks: mono
+// files of about three minutes at the session's sound quality (CarKit's
+// Sound.swift), each cut at a pause, so one is transcribed while the next
+// records and a crash loses at most the one being written. A marker cuts the chunk on the spot. Each chunk's first sample is
 // stamped on the session clock from the host time of the buffer it arrived
 // in, so chunks line up with the events to the millisecond however long the
 // session runs.
@@ -28,16 +28,16 @@ final class Mic: @unchecked Sendable {
     struct Chunk: Sendable {
         let n: Int
         let url: URL
+        let rate: Double
         /// On `Clock`: the first sample, and the end of the last.
         let start: Double
         var end: Double
         var frames: Int64 = 0
         var peak: Float = -160
-        var seconds: Double { Double(frames) / Mic.rate }
+        var seconds: Double { Double(frames) / rate }
         var file: String { "audio/\(url.lastPathComponent)" }
     }
 
-    static let rate = 16000.0
     /// A chunk is cut at the first pause after `length` seconds, and at
     /// `longest` whatever is being said. A pause is `pause` seconds under
     /// `quietDb`.
@@ -68,6 +68,7 @@ final class Mic: @unchecked Sendable {
     // On `control`.
     private var dir: URL?
     private var uid: String?
+    private var quality = SoundQuality.low
     private var running = false
     private var engine: AVAudioEngine?
     private var engineWatch: NSObjectProtocol?
@@ -98,12 +99,13 @@ final class Mic: @unchecked Sendable {
     static var permissionGranted: Bool { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized }
 
     /// Start recording into `dir`, from the device with `uid` (nil: the
-    /// system default).
-    func start(into dir: URL, uid: String?) async throws {
+    /// system default), at `quality`.
+    func start(into dir: URL, uid: String?, quality: SoundQuality) async throws {
         try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
             control.async {
                 self.dir = dir
                 self.uid = uid
+                self.quality = quality
                 do {
                     try self.open()
                     self.running = true
@@ -153,7 +155,8 @@ final class Mic: @unchecked Sendable {
         }
         let format = input.inputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw Failure("that microphone reports no channels") }
-        guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Mic.rate, channels: 1,
+        let quality = quality
+        guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: quality.rate, channels: 1,
                                          interleaved: false),
               let converter = AVAudioConverter(from: format, to: target) else {
             throw Failure("could not resample that microphone")
@@ -163,7 +166,7 @@ final class Mic: @unchecked Sendable {
             lastSound = ProcessInfo.processInfo.systemUptime
         }
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, when in
-            self?.consume(buffer, when, converter, target, into: dir)
+            self?.consume(buffer, when, converter, target, quality, into: dir)
         }
         engine.prepare()
         do {
@@ -186,7 +189,8 @@ final class Mic: @unchecked Sendable {
             }
         }
         lastOpen = ProcessInfo.processInfo.systemUptime
-        Log.line("mic open device=\(chosen.map(String.init) ?? "default") in=\(Int(format.sampleRate))Hz/\(format.channelCount)ch")
+        Log.line("mic open device=\(chosen.map(String.init) ?? "default") in=\(Int(format.sampleRate))Hz/\(format.channelCount)ch " +
+                 "kept=\(quality.rawValue)")
     }
 
     /// Stop the engine and close the chunk. Releasing the engine is what
@@ -276,8 +280,8 @@ final class Mic: @unchecked Sendable {
     // MARK: - the sound, on the tap's thread
 
     private func consume(_ buffer: AVAudioPCMBuffer, _ when: AVAudioTime, _ converter: AVAudioConverter,
-                         _ target: AVAudioFormat, into dir: URL) {
-        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * Mic.rate / buffer.format.sampleRate) + 128
+                         _ target: AVAudioFormat, _ quality: SoundQuality, into dir: URL) {
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * target.sampleRate / buffer.format.sampleRate) + 128
         guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
         var handed = false
         var err: NSError?
@@ -292,7 +296,7 @@ final class Mic: @unchecked Sendable {
         for i in 0..<Int(out.frameLength) { loudest = max(loudest, abs(samples[i])) }
         let db = loudest > 0 ? 20 * log10(loudest) : -160
         let arrived = when.isHostTimeValid ? Clock.fromHost(when.hostTime) : Clock.now
-        let seconds = Double(out.frameLength) / Mic.rate
+        let seconds = Double(out.frameLength) / target.sampleRate
 
         var opened: Chunk?
         var closed: Chunk?
@@ -302,11 +306,9 @@ final class Mic: @unchecked Sendable {
             guard accepting else { return }
             if current == nil {
                 let c = Chunk(n: next, url: dir.appending(path: String(format: "audio/%04d.m4a", next)),
-                              start: arrived, end: arrived)
+                              rate: target.sampleRate, start: arrived, end: arrived)
                 do {
-                    let file = try AVAudioFile(forWriting: c.url,
-                                               settings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: Mic.rate,
-                                                          AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 32000],
+                    let file = try AVAudioFile(forWriting: c.url, settings: quality.fileSettings,
                                                commonFormat: .pcmFormatFloat32, interleaved: false)
                     current = (c, file)
                     next += 1

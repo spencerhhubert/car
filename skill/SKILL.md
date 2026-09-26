@@ -78,6 +78,18 @@ Once you have the instruction, decide how much more you need.
   to copy, a bug they walked through): go through the pictures in order, and
   `car events` for exact element names, URLs and paths.
 
+## An app's own record beats car's pictures of it
+
+Some apps report what they show through their own `desk` command (car
+records each reading as a `desk` line), and such an app may keep a finer
+record of its own: every item it opened, where its playhead was to the
+millisecond, what was picked, even car's words taken in beside it. When the
+person talks about something inside one of those apps ("this clip", "that
+one's good"), read that app's record for what they meant (the person's own
+notes on this Mac say which apps keep one, and how to read it), and use car
+for the words and the rest of the screen. car's pictures of that app are
+the last resort, not the first.
+
 ## The timeline
 
 - `[mm:ss.mmm]` (or `h:mm:ss.mmm`) is one clock for words and events alike.

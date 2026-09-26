@@ -31,6 +31,11 @@ works), then `docs/handoff.md` (where the work stands), then
     session's state, its chunks are closed as they go, and its lock says
     whether anyone is at it; an unfinished one is finished by whoever finds
     it.
+  - Other tools on the Mac read the catalog directly, read-only, for what
+    only it has: when a session began, to the millisecond
+    (`sessions.started_at`), its state and length, and its words with their
+    chunks and times. Keep those columns and what they mean: add, never
+    rename or repurpose, and when one must change, say so in the handoff.
   - Measure CPU and memory before calling a change done.
 - **CarKit is tested; keep it that way.** Everything that is not the Mac's
   screen, keys or microphone lives in CarKit and has tests
